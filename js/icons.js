@@ -4,6 +4,7 @@ const s = (inner) =>
 export const ICONS = {
   empty: s(`<path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M10 20v-7h4v7"/>`),
   mobile: s(`<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/><path d="M9 7h6"/>`),
+  galaxy: s(`<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/><path d="M9 6h6"/><path d="M4 20h16"/><path d="M6 16h4M14 16h4"/>`),
   dresses: s(`<path d="M9 4h6"/><path d="M9 4c0 2 1.2 3 3 4s3-2 3-4"/><path d="M8 8.5 6 20h12L16 8.5"/><path d="M12 8v2"/>`),
   shoes: s(`<path d="M4 15c3-1 5-.2 8 .6 2 .6 4 .6 6-.2v2.6H4z"/><path d="M5 15.2V12c2.2-2 5-2.2 8-.4 1.4.8 3.2 1 5.2.4"/><path d="M7 18.2h10"/>`),
   watches: s(`<circle cx="12" cy="12" r="6.5"/><path d="M12 9.2V12l2 1.4"/><path d="M9 4.2h6M9 19.8h6"/>`),
@@ -30,6 +31,7 @@ export const ICONS = {
   save: s(`<path d="M6 4h10l4 4v12H6z"/><path d="M8 4v6h8V4M8 20v-6h8v6"/>`),
   load: s(`<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M5 16v3h14v-3"/>`),
   export: s(`<path d="M12 14V4"/><path d="M8 8l4-4 4 4"/><path d="M5 16v3h14v-3"/>`),
+  publish: s(`<path d="M12 3v10"/><path d="M8 9l4 4 4-4"/><path d="M5 15v4h14v-4"/><path d="M8 19h8"/>`),
   import: s(`<path d="M14 4h5v16H5V4h5"/><path d="M12 4v9"/><path d="M9 10l3 3 3-3"/>`),
   expand: s(`<path d="M8 4H4v4M16 4h4v4M4 16v4h4M20 16v4h-4"/>`),
   menu: s(`<path d="M4 7h16M4 12h16M4 17h16"/>`),

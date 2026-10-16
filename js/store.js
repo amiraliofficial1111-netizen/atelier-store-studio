@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { QUALITY } from "./quality.js";
 import { createFurniture, newFurniture } from "./furniture.js";
 import { makePresetTexture, makeNormalFromAlbedo, resolveRoofId } from "./textures.js";
+import { buildGalaxyStore, setGalaxySource } from "./galaxyStore.js?v=pack3";
 
 function mappedMat(color, texId, extra = {}) {
   if (!QUALITY.studio) {
@@ -188,7 +189,10 @@ function openingsFor(state, wall, length, height) {
       start: cx - door.width / 2,
       end: cx + door.width / 2,
       bottom: 0,
-      top: Math.min(door.height + (door.style === "slide" ? SLIDE_LINTEL : 0), height - 0.08),
+      top: Math.min(
+        door.height + (door.style === "slide" && door.theme === "mall" ? SLIDE_LINTEL : door.style === "slide" ? 0.06 : 0),
+        height - 0.08
+      ),
     });
   }
   for (const win of state.windows.filter((w) => w.wall === wall)) {
@@ -314,6 +318,44 @@ function addGlassCurtain(g, length, height, openings, surface) {
     g.add(meshBox(0.035, height, 0.055, steel, x, height / 2, 0.028));
   }
   g.add(meshBox(length, 0.03, 0.06, steel, 0, 0.015, 0.03));
+}
+
+function addWindowHaloLight(group, w, h) {
+  const gold = brassMat();
+  const glow = new THREE.MeshStandardMaterial({
+    color: "#fffaf0",
+    emissive: "#ffd27a",
+    emissiveIntensity: 3.4,
+    roughness: 0.12,
+    metalness: 0.08,
+  });
+  const halo = new THREE.MeshStandardMaterial({
+    color: "#ffe8b8",
+    emissive: "#ffc45c",
+    emissiveIntensity: 1.8,
+    roughness: 0.4,
+    metalness: 0.02,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+  });
+  const inset = 0.07;
+  const t = 0.038;
+  const z = 0.04;
+  const innerW = Math.max(0.22, w - inset * 2);
+  const innerH = Math.max(0.22, h - inset * 2);
+  group.add(meshBox(innerW + 0.04, 0.016, 0.02, gold, 0, inset - 0.016, z - 0.01));
+  group.add(meshBox(innerW + 0.04, 0.016, 0.02, gold, 0, h - inset + 0.016, z - 0.01));
+  group.add(meshBox(0.016, innerH + 0.04, 0.02, gold, -w / 2 + inset - 0.016, h / 2, z - 0.01));
+  group.add(meshBox(0.016, innerH + 0.04, 0.02, gold, w / 2 - inset + 0.016, h / 2, z - 0.01));
+  group.add(meshBox(innerW, t, 0.022, glow, 0, inset, z));
+  group.add(meshBox(innerW, t, 0.022, glow, 0, h - inset, z));
+  group.add(meshBox(t, innerH, 0.022, glow, -w / 2 + inset, h / 2, z));
+  group.add(meshBox(t, innerH, 0.022, glow, w / 2 - inset, h / 2, z));
+  group.add(meshBox(innerW + 0.06, t + 0.04, 0.008, halo, 0, inset, z + 0.012));
+  group.add(meshBox(innerW + 0.06, t + 0.04, 0.008, halo, 0, h - inset, z + 0.012));
+  group.add(meshBox(t + 0.04, innerH + 0.06, 0.008, halo, -w / 2 + inset, h / 2, z + 0.012));
+  group.add(meshBox(t + 0.04, innerH + 0.06, 0.008, halo, w / 2 - inset, h / 2, z + 0.012));
 }
 
 function addFrame(group, w, h, thick, depth, mat, originLeft = true) {
@@ -454,7 +496,6 @@ function makeLuxuryDoubleDoor(door, heightLimit) {
     panel.position.x = i * leafW;
     leaf.add(panel);
   }
-  group.add(meshBox(0.028, h - 0.1, 0.08, gold, w / 2, h / 2, 0.012));
   group.add(meshBox(w + 0.18, 0.05, 0.16, gold, w / 2, 0.025, 0.02));
   group.add(meshBox(w + 0.1, 0.012, 0.09, gold, w / 2, 0.054, 0.03));
 
@@ -465,8 +506,43 @@ function makeLuxuryDoubleDoor(door, heightLimit) {
   return group;
 }
 
+function makeBoutiqueSlideDoor(door, heightLimit) {
+  const w = door.width;
+  const h = Math.min(door.height, heightLimit - 0.08);
+  const group = new THREE.Group();
+  const opts = glassOpts(door);
+  const brass = brassMat();
+  const leafW = w / 2;
+  const frameT = 0.016;
+  const glassH = h - 0.05;
+  const slide = door.open ? leafW * 0.94 : 0;
+
+  group.add(meshBox(w + 0.1, 0.046, 0.07, brass, w / 2, h + 0.018, 0.01));
+  group.add(meshBox(w + 0.06, 0.01, 0.05, brass, w / 2, h - 0.006, 0.018));
+  group.add(meshBox(w + 0.08, 0.016, 0.055, brass, w / 2, 0.008, 0.01));
+  group.add(meshBox(0.024, h, 0.05, brass, 0.012, h / 2, 0.01));
+  group.add(meshBox(0.024, h, 0.05, brass, w - 0.012, h / 2, 0.01));
+
+  for (let i = 0; i < 2; i++) {
+    const leaf = new THREE.Group();
+    addFrame(leaf, leafW, glassH, frameT, 0.036, brass, true);
+    const pane = makeGlassPane(Math.max(0.12, leafW - frameT * 2.4), Math.max(0.2, glassH - frameT * 2.4), opts);
+    pane.position.set(leafW / 2, glassH / 2, 0);
+    leaf.add(pane);
+    const hx = i === 0 ? leafW - 0.055 : 0.055;
+    leaf.add(meshBox(0.01, 0.2, 0.016, brass, hx, glassH * 0.5, 0.026));
+    leaf.position.set(i * leafW + (i === 0 ? -slide : slide), 0.024, i === 0 ? 0.01 : 0.026);
+    group.add(leaf);
+  }
+
+  group.userData = { selectable: true, kind: "door", id: door.id };
+  return group;
+}
+
 function makeDoor(door, heightLimit) {
-  if (door.style === "slide") return makeMallSlideDoor(door, heightLimit);
+  if (door.style === "slide") {
+    return door.theme === "mall" ? makeMallSlideDoor(door, heightLimit) : makeBoutiqueSlideDoor(door, heightLimit);
+  }
   if (door.style === "double") return makeLuxuryDoubleDoor(door, heightLimit);
   const w = door.width;
   const h = Math.min(door.height, heightLimit - 0.05);
@@ -503,6 +579,7 @@ function bannerCopyFor(name) {
   const pack = {
     "YOUR STORE": { kicker: "NOW OPEN", line: "NEW SEASON", sub: "LOOKBOOK 26" },
     ATELIER: { kicker: "COUTURE", line: "NEW ARRIVALS", sub: "READY TO WEAR" },
+    "MAISON ATELIER": { kicker: "COUTURE", line: "NEW ARRIVALS", sub: "READY TO WEAR" },
     "MOBILE HUB": { kicker: "LIVE", line: "LATEST 5G", sub: "PHONES & GEAR" },
     "SOLE STUDIO": { kicker: "DROP", line: "NEW KICKS", sub: "LIMITED PAIRS" },
     CHRONOS: { kicker: "SWISS", line: "TIMEPIECES", sub: "PRIVATE VIEWING" },
@@ -1000,6 +1077,7 @@ function makeWindow(win) {
     group.add(pane);
     group.add(meshBox(w + 0.04, 0.04, 0.08, frame, 0, 0.02, 0.01));
     group.add(meshBox(w - 0.04, 0.01, 0.05, brass, 0, 0.042, 0.02));
+    if (win.wall === "front" || win.glowLed) addWindowHaloLight(group, w, h);
   } else {
     addFrame(group, w, h, 0.024, 0.042, frame, false);
     group.add(meshBox(0.016, h - 0.05, 0.03, frame, 0, h / 2, 0));
@@ -1193,7 +1271,10 @@ function addWallDressing(root, width, depth, height, state) {
 function isDarkLuxuryFitout(state) {
   const color = state?.store?.surfaces?.["wall-back"]?.color || "";
   const hex = color.replace("#", "");
-  if (hex.length < 6) return state?.store?.sign?.text === "ATELIER";
+  if (hex.length < 6) {
+    const sign = String(state?.store?.sign?.text || "").toUpperCase();
+    return sign === "ATELIER" || sign === "MAISON ATELIER";
+  }
   const n = parseInt(hex.slice(0, 6), 16);
   if (Number.isNaN(n)) return false;
   const r = (n >> 16) & 255;
@@ -2516,16 +2597,525 @@ function addCeilingRose3D(root, x, y, z, r, gold, ivory) {
   }
 }
 
-function addPremiumCeiling(root, kind, width, depth, height, roofMat, mats) {
+function luxRoundedRect(w, d, r) {
+  const s = new THREE.Shape();
+  const hw = w / 2;
+  const hd = d / 2;
+  r = Math.max(0.05, Math.min(r, hw - 0.02, hd - 0.02));
+  s.moveTo(-hw + r, -hd);
+  s.lineTo(hw - r, -hd);
+  s.absarc(hw - r, -hd + r, r, -Math.PI / 2, 0, false);
+  s.lineTo(hw, hd - r);
+  s.absarc(hw - r, hd - r, r, 0, Math.PI / 2, false);
+  s.lineTo(-hw + r, hd);
+  s.absarc(-hw + r, hd - r, r, Math.PI / 2, Math.PI, false);
+  s.lineTo(-hw, -hd + r);
+  s.absarc(-hw + r, -hd + r, r, Math.PI, Math.PI * 1.5, false);
+  s.closePath();
+  return s;
+}
+
+function luxExtrudeSlab(w, d, r, thick) {
+  const geo = new THREE.ExtrudeGeometry(luxRoundedRect(w, d, r), {
+    depth: thick,
+    bevelEnabled: false,
+    curveSegments: QUALITY.low ? 6 : 14,
+  });
+  geo.rotateX(-Math.PI / 2);
+  return geo;
+}
+
+function luxExtrudeRing(w, d, r, band, thick) {
+  const outer = luxRoundedRect(w, d, r);
+  const inner = luxRoundedRect(Math.max(0.3, w - band * 2), Math.max(0.3, d - band * 2), Math.max(0.04, r - band * 0.65));
+  outer.holes.push(inner);
+  const geo = new THREE.ExtrudeGeometry(outer, {
+    depth: thick,
+    bevelEnabled: false,
+    curveSegments: QUALITY.low ? 6 : 14,
+  });
+  geo.rotateX(-Math.PI / 2);
+  return geo;
+}
+
+function luxuryCeilingConfig(width, depth, height, user = {}) {
+  const wallGap = 0.14;
+  const outerW = Math.max(3.6, (user.width ?? width) - wallGap * 2);
+  const outerD = Math.max(2.8, (user.length ?? user.depth ?? depth) - wallGap * 2);
+  const trayW = Math.max(2.4, Math.min(outerW - 1.55, outerW * 0.72));
+  const trayD = Math.max(1.9, Math.min(outerD - 1.45, outerD * 0.66));
+  const innerW = Math.max(1.35, Math.min(trayW * 0.52, outerW * 0.38));
+  const innerD = Math.max(1.05, Math.min(trayD * 0.5, outerD * 0.34));
+  const outerY = height - 0.08;
+  const trayDrop = 0.2;
+  const innerDrop = 0.13;
+  const trayY = outerY - trayDrop;
+  const innerY = trayY - innerDrop;
+  return {
+    storeW: width,
+    storeD: depth,
+    height,
+    outerW,
+    outerD,
+    outerY,
+    trayW,
+    trayD,
+    trayY,
+    trayDrop,
+    innerW,
+    innerD,
+    innerY,
+    innerDrop,
+    innerRadius: Math.min(0.62, innerW, innerD) * 0.22,
+    coveIntensity: user.coveIntensity ?? 1,
+    spotlightIntensity: user.spotlightIntensity ?? 1,
+    chandelierScale: user.chandelierSize ?? Math.min(1.2, Math.max(0.68, Math.min(outerW, outerD) / 12)),
+    chandelierX: user.chandelierX ?? 0,
+    chandelierY: user.chandelierY ?? innerY - 0.08,
+    chandelierZ: user.chandelierZ ?? 0,
+    spotsPerTrack: user.spotsPerTrack ?? (QUALITY.low ? 4 : 6),
+    lightColor: user.lightColor ?? "#ffe3b0",
+    ledColor: user.ledColor ?? "#ffd089",
+    ceilingColor: user.ceilingColor ?? "#f3ebe0",
+    goldColor: user.goldColor ?? "#c4a36a",
+  };
+}
+
+function luxuryCeilingMaterials(cfg) {
+  const ivory = QUALITY.physical
+    ? new THREE.MeshPhysicalMaterial({
+        color: cfg.ceilingColor,
+        roughness: 0.55,
+        metalness: 0.035,
+        envMapIntensity: 0.42,
+        clearcoat: 0.08,
+        clearcoatRoughness: 0.55,
+      })
+    : new THREE.MeshStandardMaterial({
+        color: cfg.ceilingColor,
+        roughness: 0.55,
+        metalness: 0.035,
+        envMapIntensity: 0.38,
+      });
+  const beige = new THREE.MeshStandardMaterial({
+    color: "#efe4d2",
+    roughness: 0.58,
+    metalness: 0.03,
+    envMapIntensity: 0.34,
+  });
+  const gold = QUALITY.physical
+    ? new THREE.MeshPhysicalMaterial({
+        color: cfg.goldColor,
+        metalness: 0.92,
+        roughness: 0.22,
+        envMapIntensity: 1.35,
+        clearcoat: 0.38,
+        clearcoatRoughness: 0.28,
+      })
+    : new THREE.MeshStandardMaterial({
+        color: cfg.goldColor,
+        metalness: 0.88,
+        roughness: 0.24,
+        envMapIntensity: 1.2,
+      });
+  const led = new THREE.MeshStandardMaterial({
+    color: "#fff6e8",
+    emissive: cfg.ledColor,
+    emissiveIntensity: 1.35 * cfg.coveIntensity,
+    roughness: 0.28,
+    metalness: 0.02,
+  });
+  const bulb = new THREE.MeshStandardMaterial({
+    color: "#fff8ee",
+    emissive: cfg.lightColor,
+    emissiveIntensity: 1.55,
+    roughness: 0.18,
+    metalness: 0.02,
+  });
+  const track = new THREE.MeshStandardMaterial({
+    color: "#161513",
+    roughness: 0.72,
+    metalness: 0.18,
+    envMapIntensity: 0.28,
+  });
+  const well = new THREE.MeshStandardMaterial({
+    color: "#1c1a18",
+    metalness: 0.46,
+    roughness: 0.36,
+  });
+  const baffle = new THREE.MeshStandardMaterial({
+    color: "#080808",
+    roughness: 0.94,
+    metalness: 0.04,
+  });
+  return { ivory, beige, gold, led, bulb, track, well, baffle };
+}
+
+function createOuterCeiling(root, cfg, mats) {
+  const { outerW, outerD, trayW, trayD, outerY } = cfg;
+  const thick = 0.11;
+  const bandX = Math.max(0.28, (outerW - trayW) / 2);
+  const bandZ = Math.max(0.28, (outerD - trayD) / 2);
+  dropBox(root, outerW, thick, bandZ, mats.ivory, 0, outerY, outerD / 2 - bandZ / 2);
+  dropBox(root, outerW, thick, bandZ, mats.ivory, 0, outerY, -outerD / 2 + bandZ / 2);
+  dropBox(root, bandX, thick, trayD, mats.ivory, -outerW / 2 + bandX / 2, outerY, 0);
+  dropBox(root, bandX, thick, trayD, mats.ivory, outerW / 2 - bandX / 2, outerY, 0);
+  addFrameBand(root, outerW - 0.04, outerD - 0.04, 0.018, 0.012, outerY - 0.06, mats.gold);
+}
+
+function createRecessedTray(root, cfg, mats) {
+  const { trayW, trayD, trayY, trayDrop, outerY } = cfg;
+  dropBox(root, trayW, 0.085, trayD, mats.beige, 0, trayY, 0);
+  const wallH = trayDrop;
+  const wallY = (outerY + trayY) / 2;
+  dropBox(root, trayW + 0.04, wallH, 0.048, mats.ivory, 0, wallY, trayD / 2);
+  dropBox(root, trayW + 0.04, wallH, 0.048, mats.ivory, 0, wallY, -trayD / 2);
+  dropBox(root, 0.048, wallH, trayD, mats.ivory, trayW / 2, wallY, 0);
+  dropBox(root, 0.048, wallH, trayD, mats.ivory, -trayW / 2, wallY, 0);
+  addFrameBand(root, trayW + 0.06, trayD + 0.06, 0.026, 0.014, outerY - 0.055, mats.gold);
+  addFrameBand(root, trayW - 0.04, trayD - 0.04, 0.016, 0.01, trayY - 0.04, mats.gold);
+}
+
+function createCoveLED(root, cfg, mats, which = "outer") {
+  if (which === "inner") {
+    const ring = new THREE.Mesh(luxExtrudeRing(cfg.innerW + 0.18, cfg.innerD + 0.18, cfg.innerRadius + 0.08, 0.038, 0.014), mats.led);
+    ring.position.y = cfg.trayY - 0.018;
+    ring.castShadow = false;
+    ring.receiveShadow = false;
+    root.add(tagRoof(ring));
+    return ring;
+  }
+  const { trayW, trayD, outerY } = cfg;
+  const y = outerY - 0.042;
+  const inset = 0.055;
+  dropBox(root, trayW - 0.08, 0.016, 0.038, mats.led, 0, y, trayD / 2 - inset);
+  dropBox(root, trayW - 0.08, 0.016, 0.038, mats.led, 0, y, -trayD / 2 + inset);
+  dropBox(root, 0.038, 0.016, trayD - 0.08, mats.led, trayW / 2 - inset, y, 0);
+  dropBox(root, 0.038, 0.016, trayD - 0.08, mats.led, -trayW / 2 + inset, y, 0);
+}
+
+function createCentralFeaturePanel(root, cfg, mats) {
+  const panel = new THREE.Mesh(luxExtrudeSlab(cfg.innerW, cfg.innerD, cfg.innerRadius, 0.07), mats.ivory);
+  panel.position.y = cfg.innerY;
+  panel.castShadow = !QUALITY.low;
+  panel.receiveShadow = true;
+  root.add(tagRoof(panel));
+  const fascia = new THREE.Mesh(
+    luxExtrudeRing(cfg.innerW + 0.1, cfg.innerD + 0.1, cfg.innerRadius + 0.05, 0.05, cfg.innerDrop),
+    mats.beige
+  );
+  fascia.position.y = cfg.trayY;
+  fascia.castShadow = false;
+  fascia.receiveShadow = true;
+  root.add(tagRoof(fascia));
+  const trim = new THREE.Mesh(luxExtrudeRing(cfg.innerW + 0.08, cfg.innerD + 0.08, cfg.innerRadius + 0.04, 0.018, 0.01), mats.gold);
+  trim.position.y = cfg.trayY - 0.006;
+  root.add(tagRoof(trim));
+}
+
+function luxuryDownlightPoints(cfg) {
+  const pts = [];
+  const cols = 3;
+  const rows = 2;
+  const gw = cfg.trayW * 0.58;
+  const gd = cfg.trayD * 0.42;
+  for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+      pts.push({
+        x: -gw / 2 + ((i + 0.5) / cols) * gw,
+        z: -gd / 2 + ((j + 0.5) / rows) * gd,
+        y: cfg.trayY + 0.012,
+      });
+    }
+  }
+  const nX = QUALITY.low ? 3 : 5;
+  const nZ = QUALITY.low ? 2 : 3;
+  const ox = cfg.outerW / 2 - 0.52;
+  const oz = cfg.outerD / 2 - 0.5;
+  for (let i = 0; i < nX; i++) {
+    const x = -cfg.outerW / 2 + 0.72 + (i / Math.max(1, nX - 1)) * (cfg.outerW - 1.44);
+    pts.push({ x, z: oz, y: cfg.outerY - 0.03 });
+    pts.push({ x, z: -oz, y: cfg.outerY - 0.03 });
+  }
+  for (let i = 0; i < nZ; i++) {
+    const z = -cfg.trayD * 0.42 + ((i + 0.5) / nZ) * (cfg.trayD * 0.84);
+    pts.push({ x: ox, z, y: cfg.outerY - 0.03 });
+    pts.push({ x: -ox, z, y: cfg.outerY - 0.03 });
+  }
+  return pts;
+}
+
+function createDownlights(root, cfg, mats) {
+  const pts = luxuryDownlightPoints(cfg);
+  const n = pts.length;
+  const wells = new THREE.InstancedMesh(WELL_GEO, mats.well, n);
+  const baffles = new THREE.InstancedMesh(BAFFLE_GEO, mats.baffle, n);
+  const rings = new THREE.InstancedMesh(RING_GEO, mats.gold, n);
+  const lenses = new THREE.InstancedMesh(LENS_BRIGHT, mats.bulb, n);
+  wells.castShadow = false;
+  baffles.castShadow = false;
+  rings.castShadow = false;
+  for (let i = 0; i < n; i++) {
+    const { x, y, z } = pts[i];
+    instDummy.position.set(x, y, z);
+    instDummy.scale.set(1, 1, 1);
+    instDummy.rotation.set(0, 0, 0);
+    instDummy.updateMatrix();
+    wells.setMatrixAt(i, instDummy.matrix);
+    instDummy.position.set(x, y - 0.04, z);
+    instDummy.updateMatrix();
+    baffles.setMatrixAt(i, instDummy.matrix);
+    instDummy.position.set(x, y - 0.044, z);
+    instDummy.rotation.set(Math.PI / 2, 0, 0);
+    instDummy.updateMatrix();
+    rings.setMatrixAt(i, instDummy.matrix);
+    instDummy.position.set(x, y - 0.054, z);
+    instDummy.updateMatrix();
+    lenses.setMatrixAt(i, instDummy.matrix);
+  }
+  wells.instanceMatrix.needsUpdate = true;
+  baffles.instanceMatrix.needsUpdate = true;
+  rings.instanceMatrix.needsUpdate = true;
+  lenses.instanceMatrix.needsUpdate = true;
+  tagRoof(wells);
+  tagRoof(baffles);
+  tagRoof(rings);
+  tagRoof(lenses);
+  root.add(wells, baffles, rings, lenses);
+  return pts;
+}
+
+function createTrackSpotlight(parent, x, y, z, aimX, aimY, aimZ, mats, lightOpts) {
+  const g = new THREE.Group();
+  g.position.set(x, y, z);
+  const dir = new THREE.Vector3(aimX - x, aimY - y, aimZ - z);
+  if (dir.lengthSq() < 0.0001) dir.set(0, -1, 0);
+  dir.normalize();
+  const yoke = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.042, 0.04), mats.track);
+  g.add(tagRoof(yoke));
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.033, 0.12, 12), mats.track);
+  body.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+  body.position.copy(dir).multiplyScalar(0.075);
+  body.castShadow = !QUALITY.low;
+  g.add(tagRoof(body));
+  const bezel = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.03, 0.018, 12), mats.track);
+  bezel.quaternion.copy(body.quaternion);
+  bezel.position.copy(dir).multiplyScalar(0.138);
+  g.add(tagRoof(bezel));
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.02, 14), mats.bulb);
+  lens.quaternion.copy(body.quaternion);
+  lens.position.copy(dir).multiplyScalar(0.148);
+  g.add(tagRoof(lens));
+  if (lightOpts) {
+    const spot = new THREE.SpotLight(
+      lightOpts.color,
+      lightOpts.intensity,
+      lightOpts.distance,
+      lightOpts.angle,
+      lightOpts.penumbra,
+      2
+    );
+    spot.position.set(0, 0, 0);
+    spot.castShadow = !!lightOpts.shadow;
+    if (spot.castShadow) {
+      spot.shadow.mapSize.set(512, 512);
+      spot.shadow.bias = -0.0002;
+      spot.shadow.radius = 2.2;
+    }
+    const tgt = new THREE.Object3D();
+    tgt.position.set(aimX - x, aimY - y, aimZ - z);
+    g.add(tgt);
+    spot.target = tgt;
+    g.add(spot);
+  }
+  parent.add(g);
+  return g;
+}
+
+function createTrackLights(root, cfg, mats) {
+  const len = Math.max(2.4, cfg.outerD - 1.15);
+  const xOff = Math.min(cfg.outerW / 2 - 0.42, cfg.trayW / 2 + 0.55);
+  const y = cfg.outerY - 0.085;
+  const railL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.026, len), mats.track);
+  railL.position.set(-xOff, y, 0);
+  railL.castShadow = !QUALITY.low;
+  root.add(tagRoof(railL));
+  const railR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.026, len), mats.track);
+  railR.position.set(xOff, y, 0);
+  railR.castShadow = !QUALITY.low;
+  root.add(tagRoof(railR));
+  const n = cfg.spotsPerTrack;
+  const aimsL = [
+    [-cfg.storeW * 0.46, 1.35, 0.15],
+    [-cfg.storeW * 0.28, 1.1, -cfg.storeD * 0.18],
+    [-0.2, 0.85, 0.35],
+    [-cfg.storeW * 0.22, 1.05, cfg.storeD * 0.28],
+    [0.15, 1.2, -cfg.storeD * 0.44],
+    [-cfg.storeW * 0.18, 0.95, cfg.storeD * 0.42],
+  ];
+  const aimsR = [
+    [cfg.storeW * 0.46, 1.35, 0.15],
+    [cfg.storeW * 0.28, 1.1, -cfg.storeD * 0.18],
+    [0.25, 0.85, 0.35],
+    [cfg.storeW * 0.22, 1.05, cfg.storeD * 0.28],
+    [-0.1, 1.2, -cfg.storeD * 0.44],
+    [cfg.storeW * 0.18, 0.95, cfg.storeD * 0.42],
+  ];
+  const liveSlots = QUALITY.low ? 0 : QUALITY.high ? 2 : 1;
+  let live = 0;
+  for (let i = 0; i < n; i++) {
+    const z = -len / 2 + ((i + 0.5) / n) * len;
+    const aL = aimsL[i % aimsL.length];
+    const aR = aimsR[i % aimsR.length];
+    const addL = live < liveSlots && i % 2 === 0;
+    const addR = live < liveSlots && i % 2 === 1;
+    createTrackSpotlight(root, -xOff, y - 0.04, z, aL[0], aL[1], aL[2], mats, addL ? {
+      color: cfg.lightColor,
+      intensity: 11 * cfg.spotlightIntensity,
+      distance: Math.max(8, cfg.height * 2.1),
+      angle: 0.4,
+      penumbra: 0.62,
+      shadow: false,
+    } : null);
+    if (addL) live += 1;
+    createTrackSpotlight(root, xOff, y - 0.04, z, aR[0], aR[1], aR[2], mats, addR ? {
+      color: cfg.lightColor,
+      intensity: 11 * cfg.spotlightIntensity,
+      distance: Math.max(8, cfg.height * 2.1),
+      angle: 0.4,
+      penumbra: 0.62,
+      shadow: false,
+    } : null);
+    if (addR) live += 1;
+  }
+}
+
+function luxGoldArm(parent, x0, y0, z0, x1, y1, z1, mat) {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const dz = z1 - z0;
+  const len = Math.hypot(dx, dy, dz);
+  if (len < 0.01) return;
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.0058, 0.0042, len, 7), mat);
+  arm.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  arm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx / len, dy / len, dz / len));
+  arm.castShadow = !QUALITY.low;
+  parent.add(tagRoof(arm));
+}
+
+function createLuxuryChandelier(root, cfg, mats) {
+  const g = new THREE.Group();
+  g.name = "luxuryChandelier";
+  g.position.set(cfg.chandelierX, cfg.chandelierY, cfg.chandelierZ);
+  g.scale.setScalar(cfg.chandelierScale);
+  const canopy = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.035, 22), mats.gold);
+  canopy.position.y = 0.02;
+  g.add(tagRoof(canopy));
+  const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.016, 18), mats.gold);
+  plate.position.y = -0.01;
+  g.add(tagRoof(plate));
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.26, 8), mats.gold);
+  rod.position.y = -0.14;
+  g.add(tagRoof(rod));
+  const hub = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 10), mats.gold);
+  hub.position.y = -0.28;
+  g.add(tagRoof(hub));
+  const tiers = QUALITY.low
+    ? [
+        { n: 8, r: 0.42, y: -0.3, drop: 0.14, bulb: 0.028 },
+        { n: 10, r: 0.62, y: -0.34, drop: 0.22, bulb: 0.03 },
+      ]
+    : [
+        { n: 8, r: 0.3, y: -0.28, drop: 0.08, bulb: 0.026 },
+        { n: 12, r: 0.58, y: -0.32, drop: 0.16, bulb: 0.03 },
+        { n: 10, r: 0.46, y: -0.36, drop: 0.26, bulb: 0.026 },
+        { n: 6, r: 0.18, y: -0.3, drop: 0.32, bulb: 0.034 },
+      ];
+  for (const t of tiers) {
+    for (let i = 0; i < t.n; i++) {
+      const a = (Math.PI * 2 * i) / t.n + t.r * 0.15;
+      const x = Math.cos(a) * t.r;
+      const z = Math.sin(a) * t.r;
+      const by = t.y - t.drop;
+      luxGoldArm(g, 0, -0.28, 0, x, by, z, mats.gold);
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(t.bulb, 8, 6), mats.bulb);
+      bulb.position.set(x, by, z);
+      g.add(tagRoof(bulb));
+      const cup = new THREE.Mesh(new THREE.SphereGeometry(t.bulb * 0.72, 7, 5, 0, Math.PI * 2, 0, Math.PI * 0.55), mats.gold);
+      cup.position.set(x, by + t.bulb * 0.15, z);
+      g.add(tagRoof(cup));
+    }
+  }
+  root.add(g);
+  return g;
+}
+
+function setupStoreLighting(root, cfg) {
+  const amb = new THREE.AmbientLight(cfg.lightColor, 0.045);
+  root.add(amb);
+  const covePower = 6.2 * cfg.coveIntensity;
+  const covePts = [
+    [0, cfg.outerY - 0.18, cfg.trayD * 0.28],
+    [0, cfg.outerY - 0.18, -cfg.trayD * 0.28],
+    [cfg.trayW * 0.28, cfg.outerY - 0.18, 0],
+    [-cfg.trayW * 0.28, cfg.outerY - 0.18, 0],
+  ];
+  const coveN = QUALITY.low ? 2 : 4;
+  for (let i = 0; i < coveN; i++) {
+    const [x, y, z] = covePts[i];
+    const p = new THREE.PointLight(cfg.ledColor, covePower, Math.max(6.5, cfg.storeW * 0.55), 2);
+    p.position.set(x, y, z);
+    p.castShadow = false;
+    root.add(p);
+  }
+  const ch = new THREE.PointLight(cfg.lightColor, 14 * cfg.coveIntensity, Math.max(8, cfg.height * 2.15), 2);
+  ch.position.set(cfg.chandelierX, cfg.chandelierY - 0.42 * cfg.chandelierScale, cfg.chandelierZ);
+  ch.castShadow = false;
+  root.add(ch);
+  const chFill = new THREE.PointLight(cfg.ledColor, 5.5 * cfg.coveIntensity, 4.8, 2);
+  chFill.position.set(cfg.chandelierX, cfg.chandelierY + 0.08, cfg.chandelierZ);
+  chFill.castShadow = false;
+  root.add(chFill);
+  if (!QUALITY.low) {
+    const wash = new THREE.PointLight(cfg.lightColor, 8.5 * cfg.spotlightIntensity, Math.max(7, cfg.storeD * 0.7), 2);
+    wash.position.set(0, cfg.trayY - 0.15, 0);
+    wash.castShadow = false;
+    root.add(wash);
+  }
+}
+
+export function createLuxuryCeiling(root, width, depth, height, user = {}) {
+  const cfg = luxuryCeilingConfig(width, depth, height, user);
+  const mats = luxuryCeilingMaterials(cfg);
+  const group = new THREE.Group();
+  group.name = "luxuryCeiling";
+  group.userData = { selectable: true, kind: "roof", id: "roof", ceilingConfig: cfg };
+  createOuterCeiling(group, cfg, mats);
+  createRecessedTray(group, cfg, mats);
+  createCoveLED(group, cfg, mats, "outer");
+  createCentralFeaturePanel(group, cfg, mats);
+  createCoveLED(group, cfg, mats, "inner");
+  createDownlights(group, cfg, mats);
+  createTrackLights(group, cfg, mats);
+  createLuxuryChandelier(group, cfg, mats);
+  setupStoreLighting(group, cfg);
+  root.add(group);
+  return group;
+}
+
+function addPremiumCeiling(root, kind, width, depth, height, roofMat, mats, ceilingOpts) {
   const { cream, brass, glow, housing, led, walnut, oak, dark, chrome, champagne, trayIvory } = mats;
   const gold = champagne;
   const ivory = trayIvory;
+  if (kind === "roof-plain" || kind === "roof-boutique") {
+    createLuxuryCeiling(root, width, depth, height, ceilingOpts || {});
+    return true;
+  }
   const slab = new THREE.Mesh(new THREE.BoxGeometry(width, 0.16, depth), roofMat || cream);
   slab.position.y = height - 0.05;
   slab.receiveShadow = true;
   slab.userData = { selectable: true, kind: "roof", id: "roof" };
   root.add(slab);
-  if (kind === "roof-plain") return true;
 
   if (kind === "roof-traylux") {
     addCoveLights(root, width, depth, height, cream, brass, led, "cream");
@@ -3348,7 +3938,7 @@ function addPremiumCeiling(root, kind, width, depth, height, roofMat, mats) {
   return false;
 }
 
-function addInteriorCeiling(root, width, depth, height, roofMat, style) {
+function addInteriorCeiling(root, width, depth, height, roofMat, style, ceilingOpts) {
   if (QUALITY.phone) {
     const slab = new THREE.Mesh(new THREE.BoxGeometry(width, 0.14, depth), roofMat);
     slab.position.y = height - 0.05;
@@ -3424,19 +4014,28 @@ function addInteriorCeiling(root, width, depth, height, roofMat, style) {
 
   const kind = resolveRoofId(style || "paint");
   if (
-    addPremiumCeiling(root, kind, width, depth, height, roofMat, {
-      cream,
-      brass,
-      glow,
-      housing,
-      led,
-      walnut,
-      oak,
-      dark,
-      chrome,
-      champagne,
-      trayIvory,
-    })
+    addPremiumCeiling(
+      root,
+      kind,
+      width,
+      depth,
+      height,
+      roofMat,
+      {
+        cream,
+        brass,
+        glow,
+        housing,
+        led,
+        walnut,
+        oak,
+        dark,
+        chrome,
+        champagne,
+        trayIvory,
+      },
+      ceilingOpts
+    )
   ) {
     return;
   }
@@ -4038,6 +4637,10 @@ export function surfaceKey(kind, id) {
 }
 
 export function buildRoom(state, materials) {
+  if (state.store.frontStyle === "galaxy") {
+    setGalaxySource(state.store.galaxyPack);
+    return buildGalaxyStore();
+  }
   const { width, depth, height } = state.store;
   const root = new THREE.Group();
   root.name = "store-model";
@@ -4173,7 +4776,7 @@ export function buildRoom(state, materials) {
     root.add(p);
   }
 
-  addInteriorCeiling(root, width, depth, height, materials.roof, state.store.surfaces.roof?.texture);
+  addInteriorCeiling(root, width, depth, height, materials.roof, state.store.surfaces.roof?.texture, state.store.ceiling);
   addInteriorFitout(root, width, depth, height, state.store.frontStyle, state);
   addWallDressing(root, width, depth, height, state);
   addMallApron(root, width, depth, height);
@@ -4206,6 +4809,13 @@ export function defaultState() {
         "wall-back": { color: "#2a221c", texture: "fluted-walnut", image: null, repeat: 1.6, finish: "solid", opacity: 0.05 },
         "wall-left": { color: "#1c1816", texture: "silk", image: null, repeat: 1.85, finish: "solid", opacity: 0.05 },
         "wall-right": { color: "#1c1816", texture: "silk", image: null, repeat: 1.85, finish: "solid", opacity: 0.05 },
+      },
+      ceiling: {
+        coveIntensity: 1,
+        spotlightIntensity: 1,
+        chandelierSize: 1,
+        spotsPerTrack: 6,
+        lightColor: "#ffe3b0",
       },
     },
     doors: [

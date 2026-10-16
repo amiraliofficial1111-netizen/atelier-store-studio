@@ -239,7 +239,8 @@ export const SURFACE_PBR = {
   "roof-woodmarble": { roughness: 0.2, metalness: 0.1, clearcoat: 0.24 },
   "roof-rgbline": { roughness: 0.72, metalness: 0.05, clearcoat: 0.08 },
   "roof-goldframe": { roughness: 0.32, metalness: 0.14, clearcoat: 0.22 },
-  "roof-plain": { roughness: 0.88, metalness: 0.02, clearcoat: 0.04 },
+  "roof-plain": { roughness: 0.55, metalness: 0.03, clearcoat: 0.08 },
+  "roof-boutique": { roughness: 0.55, metalness: 0.03, clearcoat: 0.08 },
   "roof-organic": { roughness: 0.4, metalness: 0.05, clearcoat: 0.1 },
   "roof-traylux": { roughness: 0.2, metalness: 0.16, clearcoat: 0.34 },
   "roof-roselux": { roughness: 0.18, metalness: 0.16, clearcoat: 0.4 },
@@ -636,7 +637,8 @@ export function roofRepeat(id) {
 }
 
 export const ROOF_MATERIALS = [
-  { id: "roof-plain", label: "Plain" },
+  { id: "roof-plain", label: "Luxury Boutique" },
+  { id: "roof-boutique", label: "Boutique Tray" },
   { id: "roof-traylux", label: "Royal Tray" },
   { id: "roof-roselux", label: "Ceiling Rose" },
   { id: "roof-cofferoyal", label: "Palace Coffer" },
@@ -3560,8 +3562,8 @@ function paintCeilingRose(ctx, cx, cy, r) {
 function buildRoofTexture(id) {
   return canvasTex((ctx, s) => {
     const mid = s / 2;
-    if (id === "roof-plain") {
-      ctx.fillStyle = "#efe9df";
+    if (id === "roof-plain" || id === "roof-boutique") {
+      ctx.fillStyle = "#f3ebe0";
       ctx.fillRect(0, 0, s, s);
       return;
     }

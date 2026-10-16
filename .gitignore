@@ -6,3 +6,9 @@ out
 .env
 .env.*
 *.zip
+_tools/
+share-origin.json
+_chrome_open/
+_chrome_profile_pub/
+_oak_check.png
+_walk_check.mjs

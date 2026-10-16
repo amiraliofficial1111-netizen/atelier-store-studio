@@ -1253,6 +1253,22 @@ const PRODUCT_LINES = {
   ],
 };
 
+export const STORE_FOR_CATEGORY = {
+  phones: "galaxy",
+  laptops: "mobile",
+  tablets: "mobile",
+  dresses: "dresses",
+  shoes: "shoes",
+  watches: "watches",
+  cafe: "cafe",
+  grocery: "grocery",
+  pharmacy: "pharmacy",
+};
+
+export function storeIdForCategory(category) {
+  return STORE_FOR_CATEGORY[category] || "";
+}
+
 export function productInfo(category, index = 0, color) {
   const list = PRODUCT_LINES[category] || PRODUCT_LINES.phones;
   const base = list[index % list.length];
@@ -1277,6 +1293,7 @@ export function tagProduct(node, category, index, extra = {}) {
     slotId: extra.slotId || "",
     furnId: extra.furnId || "",
     scale: extra.scale,
+    storeId: extra.storeId || storeIdForCategory(category),
     ...info,
   };
   return node;

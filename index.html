@@ -2,15 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Atelier — Premium Store Studio</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="favicon.ico" sizes="any" />
-  <link rel="stylesheet" href="css/style.css?v=resize1" />
-  <link rel="modulepreload" href="js/main.js?v=pre2" />
+  <link rel="stylesheet" href="css/style.css?v=pub20" />
+  <link rel="modulepreload" href="js/main.js?v=pub50" />
   <link rel="modulepreload" href="./node_modules/three/build/three.module.js" />
 </head>
 <body>
+  <div class="shop-lobby" id="shop-lobby">
+    <div class="shop-lobby-inner">
+      <p class="shop-lobby-eye">Atelier</p>
+      <h1>Choose a shop</h1>
+          <p class="muted" id="lobby-lead">Preview each shop, then open the one you want. Only that shop will load.</p>
+      <div class="shop-lobby-grid" id="shop-lobby-grid"></div>
+      <section class="published-block" id="published-block" hidden>
+        <div class="published-block-head">
+          <p class="shop-lobby-eye">Live</p>
+          <h2>Published</h2>
+        </div>
+        <div class="published-list" id="published-list"></div>
+      </section>
+    </div>
+  </div>
   <div id="app">
     <button type="button" class="menu-fab" id="btn-show-menu" data-icon="menu" title="Show menu"><span class="btn-label">Menu</span></button>
     <header class="toolbar">
@@ -39,6 +54,7 @@
           <button type="button" class="tool-btn" id="btn-roof" data-icon="roof" title="Toggle roof"><span class="btn-label">Roof</span></button>
           <button type="button" class="tool-btn" id="btn-grid" data-icon="grid" title="Toggle floor grid"><span class="btn-label">Grid</span></button>
           <button type="button" class="tool-btn" id="btn-fs" data-icon="expand" title="Hide menu"><span class="btn-label">Focus</span></button>
+          <button type="button" class="tool-btn" id="btn-hide-sides" data-icon="expand" title="Hide both side panels for a full shop view"><span class="btn-label">Hide panels</span></button>
         </div>
 
         <div class="toolbar-group transform-group icon-rail" data-label="Edit">
@@ -51,8 +67,11 @@
       <div class="toolbar-spacer"></div>
 
       <div class="toolbar-group project-group" data-label="Project">
+        <button type="button" class="tool-btn" id="btn-change-shop" data-icon="empty" title="Choose another shop"><span class="btn-label">Shops</span></button>
         <button type="button" class="tool-btn" id="btn-reset-cam" data-icon="camera" title="Reset camera"><span class="btn-label">Reset</span></button>
-        <button type="button" class="tool-btn" id="btn-save" data-icon="save" title="Save layout — refresh par yahi rahega"><span class="btn-label">Save</span></button>
+        <button type="button" class="tool-btn" id="btn-save" data-icon="save" title="Save this shop layout"><span class="btn-label">Save</span></button>
+        <button type="button" class="tool-btn" id="btn-publish" data-icon="publish" title="Publish this shop and copy the customer link"><span class="btn-label">Publish</span></button>
+        <button type="button" class="tool-btn" id="btn-published" data-icon="export" title="Show published stores"><span class="btn-label">Published</span></button>
         <button type="button" class="tool-btn" id="btn-load" data-icon="load" title="Load"><span class="btn-label">Load</span></button>
         <button type="button" class="tool-btn" id="btn-export" data-icon="export" title="Export"><span class="btn-label">Export</span></button>
         <label class="tool-btn file-label" data-icon="import" title="Import">
@@ -63,10 +82,128 @@
       </div>
     </header>
 
+    <div id="customer-bar" class="customer-bar" hidden>
+      <div class="customer-bar-copy">
+        <span id="customer-shop-name">Store</span>
+        <small id="customer-shop-detail"></small>
+      </div>
+      <button type="button" id="btn-customer-shops">All shops</button>
+    </div>
+
     <div class="workspace">
+      <aside class="panel panel-browse" id="panel-browse">
+        <button type="button" class="panel-toggle panel-toggle-left" id="btn-browse-panel" title="Hide studio" aria-label="Toggle studio">
+          <span class="ico panel-toggle-close" data-icon="chevronLeft"></span>
+          <span class="ico panel-toggle-open" data-icon="chevronRight"></span>
+        </button>
+        <nav class="browse-rail" id="browse-rail" aria-label="Studio sections">
+          <button type="button" class="browse-tab active" data-browse="catalog" data-icon="plus" title="Catalog"><span>Add</span></button>
+          <button type="button" class="browse-tab" data-browse="objects" data-icon="desk" title="Objects"><span>Items</span></button>
+          <button type="button" class="browse-tab" data-browse="surfaces" data-icon="wall" title="Surfaces"><span>Room</span></button>
+          <button type="button" class="browse-tab" data-browse="lights" data-icon="light" title="Lights"><span>Light</span></button>
+          <button type="button" class="browse-tab" data-browse="layouts" data-icon="empty" title="Layouts"><span>Shop</span></button>
+        </nav>
+        <div class="browse-main">
+          <div class="panel-head browse-head">
+            <div class="panel-head-row">
+              <div>
+                <p class="eyebrow" id="browse-eyebrow">Studio</p>
+                <h2 id="browse-title">Add furniture</h2>
+              </div>
+              <button type="button" class="panel-hide-btn" id="btn-hide-browse" title="Hide left panel">Hide</button>
+            </div>
+            <p class="panel-sub" id="browse-sub">Preview a piece, then add it to the store</p>
+          </div>
+          <div id="console-home">
+            <div class="browse-pane" data-browse-pane="catalog">
+              <section class="panel-section">
+                <h2>Add to store</h2>
+                <p class="muted">See each piece here, then tap to add it. Edit options open on the right.</p>
+                <div class="catalog" id="catalog"></div>
+              </section>
+            </div>
+            <div class="browse-pane" data-browse-pane="objects" hidden>
+              <section class="panel-section objects-picker" id="objects-picker">
+                <h2>Objects in store</h2>
+                <div class="browse-object-head">
+                  <span class="object-trigger-ico" id="object-trigger-ico"></span>
+                  <span class="object-trigger-copy">
+                    <strong id="object-trigger-label">Choose an object</strong>
+                    <small id="object-count">0 items</small>
+                  </span>
+                </div>
+                <button type="button" class="object-trigger" id="object-trigger" hidden></button>
+                <div class="object-menu is-inline" id="object-menu">
+                  <div class="object-list" id="object-list"></div>
+                </div>
+              </section>
+            </div>
+            <div class="browse-pane" data-browse-pane="surfaces" hidden>
+              <section class="panel-section">
+                <h2>Surfaces</h2>
+                <p class="muted">Select a surface — color and material open on the right.</p>
+                <div class="surface-list">
+                  <button type="button" class="surface-btn" data-select="floor" data-icon="floor">Floor</button>
+                  <button type="button" class="surface-btn" data-select="roof" data-icon="roof">Roof</button>
+                  <button type="button" class="surface-btn" data-select="wall-front" data-icon="wall">Front wall</button>
+                  <button type="button" class="surface-btn" data-select="wall-back" data-icon="wall">Back wall</button>
+                  <button type="button" class="surface-btn" data-select="wall-left" data-icon="wall">Left wall</button>
+                  <button type="button" class="surface-btn" data-select="wall-right" data-icon="wall">Right wall</button>
+                  <button type="button" class="surface-btn" data-select="sign" data-icon="sign">Store sign</button>
+                </div>
+              </section>
+            </div>
+            <div class="browse-pane" data-browse-pane="lights" hidden>
+              <section class="panel-section">
+                <h2>Shop lighting</h2>
+                <p class="muted">Whole-shop lighting. Add a lamp, then edit it on the right.</p>
+                <label class="field">
+                  <span>Shop brightness <em id="val-lit-exposure">1.14</em></span>
+                  <input type="range" id="lit-exposure" min="0.35" max="2.2" step="0.02" value="1.14" />
+                </label>
+                <label class="field">
+                  <span>Sun / key light <em id="val-lit-sun">0.92</em></span>
+                  <input type="range" id="lit-sun" min="0" max="2.2" step="0.02" value="0.92" />
+                </label>
+                <label class="field">
+                  <span>Fill light <em id="val-lit-fill">0.24</em></span>
+                  <input type="range" id="lit-fill" min="0" max="1.4" step="0.02" value="0.24" />
+                </label>
+                <label class="field">
+                  <span>Ambient <em id="val-lit-hemi">1.20</em></span>
+                  <input type="range" id="lit-hemi" min="0.2" max="2.2" step="0.02" value="1.20" />
+                </label>
+                <label class="field">
+                  <span>Warm / cool <em id="val-lit-warmth">Warm</em></span>
+                  <input type="range" id="lit-warmth" min="0" max="1" step="0.02" value="0.76" />
+                </label>
+                <h2>Add a light</h2>
+                <div class="catalog light-catalog" id="light-catalog"></div>
+              </section>
+            </div>
+            <div class="browse-pane" data-browse-pane="layouts" hidden>
+              <section class="panel-section">
+                <h2>Room depth</h2>
+                <p class="muted">Width and height are locked.</p>
+                <label class="field">
+                  <span>Depth <em id="val-depth">14.0 m</em></span>
+                  <input type="range" id="store-depth" min="8" max="28" step="0.5" value="14" />
+                </label>
+              </section>
+              <section class="panel-section">
+                <h2>Shop layouts</h2>
+                <p class="muted">Only the selected shop will open.</p>
+                <div class="preset-grid" id="preset-grid"></div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </aside>
+
       <main class="viewport">
         <canvas id="scene"></canvas>
-        <div id="boot-loader" class="boot-loader">
+        <iframe id="original-store" class="original-store-frame" hidden title="Mobile Large"></iframe>
+        <div id="boot-loader" class="boot-loader" hidden>
           <div class="boot-loader-card">
             <span class="boot-spinner" aria-hidden="true"></span>
             <p data-boot-text>Loading models…</p>
@@ -76,39 +213,83 @@
         <div class="hud hud-top">
           <span class="view-badge" id="view-badge">Inside</span>
           <span class="hud-store" id="hud-store">Your Store</span>
+          <button type="button" class="hud-published" id="hud-published" hidden>Published</button>
         </div>
+        <aside class="published-panel" id="published-panel" hidden>
+          <div class="published-panel-head">
+            <h2>Published</h2>
+            <button type="button" id="btn-published-close">Close</button>
+          </div>
+          <div id="published-panel-list"></div>
+        </aside>
         <div class="save-toast" id="save-toast" hidden>Saved</div>
-        <div class="viewport-hint" id="walk-hint" hidden style="display:none">
-          <span>WASD to walk · Esc to exit</span>
+        <div class="viewport-hint" id="walk-hint" hidden>
+          <span class="key-chip"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Walk</span>
+          <span class="key-chip">Drag look</span>
+          <span class="key-chip">Click floor</span>
+          <span class="key-chip"><kbd>←</kbd><kbd>→</kbd> Turn</span>
+          <button type="button" class="key-chip key-sit" id="btn-walk-sit"><kbd>E</kbd> <span>Sit</span></button>
         </div>
+        <div class="walk-stick" id="walk-stick" hidden>
+          <div class="walk-stick-base" id="walk-stick-base">
+            <div class="walk-stick-knob" id="walk-stick-knob"></div>
+          </div>
+        </div>
+        <div class="walk-dock" id="walk-dock" hidden>
+          <div class="walk-dock-row">
+            <span class="walk-dock-label">Mode</span>
+            <button type="button" id="btn-walk-mode" class="active" title="Walk around the shop">Walk</button>
+            <button type="button" id="btn-edit-mode" title="Edit while the walker stays here">Edit</button>
+          </div>
+          <div class="walk-dock-row">
+            <span class="walk-dock-label">Person</span>
+            <button type="button" data-walk-person="first" title="1st person — see through the eyes">1st</button>
+            <button type="button" data-walk-person="second" title="2nd person — face camera">2nd</button>
+            <button type="button" data-walk-person="third" title="3rd person — follow from behind">3rd</button>
+          </div>
+          <div class="walk-dock-row">
+            <span class="walk-dock-label">Look</span>
+            <button type="button" data-walk-side="front" title="Face / front">Face</button>
+            <button type="button" data-walk-side="back" title="Back">Back</button>
+            <button type="button" data-walk-side="left" title="Left">Left</button>
+            <button type="button" data-walk-side="right" title="Right">Right</button>
+            <button type="button" id="btn-walk-look" title="Lock mouse look">Aim</button>
+          </div>
+          <button type="button" id="btn-resume-walk" hidden>Back to walk</button>
+        </div>
+        <button type="button" class="show-sides-chip" id="btn-show-sides" hidden>Show panels</button>
         <div class="viewport-legend">
           <span class="legend-chip">Click a wall, floor or fixture to edit</span>
           <span class="legend-chip">1 Move · 2 Rotate · 3 Scale · Del</span>
         </div>
       </main>
 
-      <aside class="panel panel-side">
-        <button type="button" class="panel-toggle" id="btn-panel" title="Hide panel" aria-label="Toggle panel">
+      <aside class="panel panel-inspect" id="panel-inspect">
+        <button type="button" class="panel-toggle panel-toggle-right" id="btn-panel" title="Hide editor" aria-label="Toggle editor">
           <span class="ico panel-toggle-close"></span>
           <span class="ico panel-toggle-open"></span>
         </button>
-        <div class="panel-head">
+        <div class="panel-head inspect-head">
           <div class="panel-head-row">
             <div>
-              <p class="eyebrow">Atelier studio</p>
-              <h2>Design console</h2>
+              <p class="eyebrow" id="panel-eyebrow">Inspector</p>
+              <h2 id="panel-title">Edit</h2>
             </div>
-            <span class="status-pill" id="inspect-status">Ready</span>
+            <div class="inspect-head-actions">
+              <span class="status-pill" id="inspect-status">Ready</span>
+              <button type="button" class="panel-hide-btn" id="btn-hide-inspect" title="Hide right panel">Hide</button>
+            </div>
           </div>
-          <p class="panel-sub">Materials, fixtures and layout</p>
+          <p class="panel-sub" id="panel-sub">Select an item in the store</p>
         </div>
+        <div id="console-edit">
         <div class="props props-idle" id="props-empty">
           <h2>Inspector</h2>
           <div class="empty-hint">
             <span class="empty-mark" aria-hidden="true"></span>
             <div>
               <p class="empty-title">Nothing selected</p>
-              <p class="muted">Click a product on display, or a wall, door or fixture.</p>
+              <p class="muted">Choose from the catalog, objects, or surfaces — or click in the store.</p>
             </div>
           </div>
         </div>
@@ -177,6 +358,7 @@
             <select id="door-style">
               <option value="glass">Single glass</option>
               <option value="double">Double glass</option>
+              <option value="slide">Sliding glass</option>
             </select>
           </label>
           <label class="field">
@@ -307,7 +489,7 @@
           </label>
           <div id="furn-desk-products" hidden>
             <h2>Desk products</h2>
-            <p class="muted">Is desk par naya product add karo. Product click karke delete bhi ho sakta hai.</p>
+            <p class="muted">Add a product to this desk. Click a product to delete it.</p>
             <div class="btn-row">
               <button type="button" class="tool-btn" data-add-cat="laptops"><span class="btn-label">Add laptop</span></button>
               <button type="button" class="tool-btn" data-add-cat="tablets"><span class="btn-label">Add iPad</span></button>
@@ -457,106 +639,20 @@
           </div>
           <p class="product-price" id="prod-price">$0</p>
           <p class="muted" id="prod-detail"></p>
-          <h2>This desk</h2>
-          <div class="btn-row" id="prod-quick-add">
-            <button type="button" class="tool-btn" data-add-cat="laptops"><span class="btn-label">Add laptop</span></button>
-            <button type="button" class="tool-btn" data-add-cat="tablets"><span class="btn-label">Add iPad</span></button>
-            <button type="button" class="tool-btn" data-add-cat="phones"><span class="btn-label">Add phone</span></button>
+          <div class="btn-row">
+            <button type="button" class="tool-btn" id="btn-open-store" data-icon="publish" title="Open the store for this product"><span class="btn-label">Open this store</span></button>
           </div>
           <div class="btn-row">
             <button type="button" class="tool-btn danger" id="btn-delete-prod" data-icon="trash"><span class="btn-label">Delete from desk</span></button>
           </div>
-          <h2>Catalog</h2>
-          <div class="prod-swap-cats" id="prod-action-mode"></div>
-          <div class="prod-swap-cats" id="prod-swap-cats"></div>
-          <div class="catalog" id="prod-swap-grid"></div>
-          <p class="muted" id="prod-swap-hint">Replace se isi jagah badlo. Add new se isi desk par naya product aata hai.</p>
+          <div id="prod-quick-add" hidden></div>
+          <div id="prod-action-mode" hidden></div>
+          <div id="prod-swap-cats" hidden></div>
+          <div id="prod-swap-grid" hidden></div>
+          <p id="prod-swap-hint" hidden></p>
         </div>
 
-        <p class="stack-label">Select</p>
-        <section class="panel-section objects-picker" id="objects-picker">
-          <h2>Objects in store</h2>
-          <button type="button" class="object-trigger" id="object-trigger" aria-expanded="false" aria-controls="object-menu">
-            <span class="object-trigger-ico" id="object-trigger-ico"></span>
-            <span class="object-trigger-copy">
-              <strong id="object-trigger-label">Choose an object</strong>
-              <small id="object-count">0 items</small>
-            </span>
-            <span class="object-chevron" aria-hidden="true"></span>
-          </button>
-          <div class="object-menu" id="object-menu" hidden>
-            <div class="object-list" id="object-list"></div>
-          </div>
-        </section>
-
-        <p class="stack-label">Room</p>
-        <section class="panel-section">
-          <h2>Store size</h2>
-          <label class="field">
-            <span>Width <em id="val-width">18.0 m</em></span>
-            <input type="range" id="store-width" min="8" max="32" step="0.5" value="18" />
-          </label>
-          <label class="field">
-            <span>Depth <em id="val-depth">14.0 m</em></span>
-            <input type="range" id="store-depth" min="8" max="28" step="0.5" value="14" />
-          </label>
-          <label class="field">
-            <span>Height <em id="val-height">4.8 m</em></span>
-            <input type="range" id="store-height" min="2.8" max="6" step="0.1" value="4.8" />
-          </label>
-        </section>
-
-        <section class="panel-section">
-          <h2>Shop lighting</h2>
-          <p class="muted">Har shop ka overall light yahan se change karo. Neeche se extra lamps add karo.</p>
-          <label class="field">
-            <span>Shop brightness <em id="val-lit-exposure">1.14</em></span>
-            <input type="range" id="lit-exposure" min="0.35" max="2.2" step="0.02" value="1.14" />
-          </label>
-          <label class="field">
-            <span>Sun / key light <em id="val-lit-sun">0.92</em></span>
-            <input type="range" id="lit-sun" min="0" max="2.2" step="0.02" value="0.92" />
-          </label>
-          <label class="field">
-            <span>Fill light <em id="val-lit-fill">0.24</em></span>
-            <input type="range" id="lit-fill" min="0" max="1.4" step="0.02" value="0.24" />
-          </label>
-          <label class="field">
-            <span>Ambient <em id="val-lit-hemi">1.20</em></span>
-            <input type="range" id="lit-hemi" min="0.2" max="2.2" step="0.02" value="1.20" />
-          </label>
-          <label class="field">
-            <span>Warm / cool <em id="val-lit-warmth">Warm</em></span>
-            <input type="range" id="lit-warmth" min="0" max="1" step="0.02" value="0.76" />
-          </label>
-          <h2>Add a light</h2>
-          <div class="catalog light-catalog" id="light-catalog"></div>
-          <p class="muted">Jitni chaaho lights add karo, phir select karke color, brightness aur height edit karo.</p>
-        </section>
-
-        <section class="panel-section">
-          <h2>Presets</h2>
-          <div class="preset-grid" id="preset-grid"></div>
-        </section>
-
-        <section class="panel-section">
-          <h2>Surfaces</h2>
-          <div class="surface-list">
-            <button type="button" class="surface-btn" data-select="floor" data-icon="floor">Floor</button>
-            <button type="button" class="surface-btn" data-select="roof" data-icon="roof">Roof</button>
-            <button type="button" class="surface-btn" data-select="wall-front" data-icon="wall">Front wall</button>
-            <button type="button" class="surface-btn" data-select="wall-back" data-icon="wall">Back wall</button>
-            <button type="button" class="surface-btn" data-select="wall-left" data-icon="wall">Left wall</button>
-            <button type="button" class="surface-btn" data-select="wall-right" data-icon="wall">Right wall</button>
-            <button type="button" class="surface-btn" data-select="sign" data-icon="sign">Store sign</button>
-          </div>
-        </section>
-
-        <p class="stack-label">Catalog</p>
-        <section class="panel-section">
-          <h2>Add to store</h2>
-          <div class="catalog" id="catalog"></div>
-        </section>
+        </div>
 
       </aside>
     </div>
@@ -570,6 +666,6 @@
       }
     }
   </script>
-  <script type="module" src="js/main.js?v=pre2"></script>
+  <script type="module" src="js/main.js?v=pub50"></script>
 </body>
 </html>

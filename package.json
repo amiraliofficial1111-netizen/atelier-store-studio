@@ -4,8 +4,8 @@
   "private": true,
   "description": "Premium mall store 3D studio",
   "scripts": {
-    "start": "serve -l 3000",
-    "dev": "serve -l 3000"
+    "start": "node server.mjs",
+    "dev": "node server.mjs"
   },
   "devDependencies": {
     "serve": "^14.2.4",

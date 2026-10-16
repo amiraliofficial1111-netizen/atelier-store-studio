@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Reflector } from "three/addons/objects/Reflector.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { QUALITY, capTex } from "./quality.js";
 import { loadAllWalkGirls, getWalkGirlPacks } from "./walk-girls.js?v=girlwalk1";
@@ -22,6 +22,17 @@ import {
   makeFoldedDress,
   makeShoePair,
 } from "./products.js";
+
+let furniturePreviewMode = false;
+let hideShopLaptops = false;
+
+export function setFurniturePreviewMode(on) {
+  furniturePreviewMode = !!on;
+}
+
+export function setShopHideLaptops(on) {
+  hideShopLaptops = !!on;
+}
 
 const DRESS_COLORS = ["#1c1916", "#4a1d4e", "#8b1e3f", "#1e3a5f", "#c4a574", "#f2efe6", "#2f5d50", "#b42318"];
 const SHIRT_COLORS = [
@@ -420,29 +431,100 @@ function satinBronze(color = "#5a4a3c") {
     : new THREE.MeshStandardMaterial(spec);
 }
 
-function makeLiveGlass(geo, tint = 0xc4ced6) {
-  const size = QUALITY.phone ? 256 : QUALITY.high ? 768 : 512;
-  if (!QUALITY.phone) {
-    return new Reflector(geo, {
-      clipBias: 0.003,
-      textureWidth: size,
-      textureHeight: Math.round(size * 1.45),
-      color: tint,
-      multisample: 0,
-    });
-  }
+let reflectorBudget = 0;
+function resetReflectorBudget() {
+  reflectorBudget = 0;
+}
+
+function makeLiveReflector(geo) {
+  if (furniturePreviewMode || reflectorBudget >= 3) return makeChromeGlass(geo);
+  reflectorBudget += 1;
+  const size = QUALITY.high ? 512 : QUALITY.low ? 256 : 384;
+  const mesh = new Reflector(geo, {
+    clipBias: 0.003,
+    textureWidth: size,
+    textureHeight: size,
+    color: 0xd8dee6,
+    multisample: 0,
+  });
+  mesh.userData.liveReflector = true;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  return mesh;
+}
+
+function makeMirrorLookTex() {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 384;
+  const ctx = c.getContext("2d");
+  const g = ctx.createLinearGradient(0, 0, 40, 384);
+  g.addColorStop(0, "#f4f7fb");
+  g.addColorStop(0.18, "#d5dee6");
+  g.addColorStop(0.38, "#b7c4cf");
+  g.addColorStop(0.55, "#e4d4b6");
+  g.addColorStop(0.74, "#c8d3dc");
+  g.addColorStop(1, "#eef3f7");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 384);
+  ctx.globalAlpha = 0.32;
+  ctx.fillStyle = "#fff6e4";
+  ctx.beginPath();
+  ctx.ellipse(78, 72, 58, 30, 0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ffe2a8";
+  ctx.beginPath();
+  ctx.ellipse(188, 128, 40, 22, -0.28, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.14;
+  ctx.fillStyle = "#2a241c";
+  ctx.fillRect(48, 168, 46, 96);
+  ctx.fillRect(168, 178, 42, 86);
+  ctx.globalAlpha = 0.2;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, 256, 18);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.userData.shared = true;
+  return tex;
+}
+
+let CHROME_GLASS_MAT = null;
+function chromeGlassMat() {
+  if (CHROME_GLASS_MAT) return CHROME_GLASS_MAT;
   const spec = {
-    color: "#c8d2da",
-    metalness: 1,
-    roughness: 0.02,
-    envMapIntensity: 2.5,
+    color: "#f3f6f9",
+    map: makeMirrorLookTex(),
+    metalness: 0.42,
+    roughness: 0.1,
+    envMapIntensity: 1.2,
+    emissive: "#b7c2cc",
+    emissiveIntensity: 0.28,
   };
-  return new THREE.Mesh(
-    geo,
-    QUALITY.physical
-      ? new THREE.MeshPhysicalMaterial({ ...spec, clearcoat: 1, clearcoatRoughness: 0.03 })
-      : new THREE.MeshStandardMaterial(spec)
-  );
+  CHROME_GLASS_MAT = QUALITY.physical
+    ? new THREE.MeshPhysicalMaterial({ ...spec, clearcoat: 0.85, clearcoatRoughness: 0.08 })
+    : new THREE.MeshStandardMaterial(spec);
+  CHROME_GLASS_MAT.userData.shared = true;
+  return CHROME_GLASS_MAT;
+}
+
+function makeChromeGlass(geo) {
+  const mat = chromeGlassMat().clone();
+  mat.userData.shared = false;
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData.mirrorGlass = true;
+  return mesh;
+}
+
+export function listMirrorGlass(root, out = []) {
+  root.traverse((o) => {
+    if (o.userData?.mirrorGlass && o.isMesh) out.push(o);
+  });
+  return out;
+}
+
+function makeLiveGlass(geo) {
+  return makeChromeGlass(geo);
 }
 
 class RoundedRectRailCurve extends THREE.Curve {
@@ -550,62 +632,241 @@ function makeRoundedRectGeometry(hw, hh, r, segs = 10) {
   return geo;
 }
 
-function addArchedFloorMirror(group, w, h) {
-  const bronze = satinBronze("#5a4a3c");
-  const lipMat = satinBronze("#6a5748");
-  const tubeR = Math.min(0.04, Math.max(0.03, w * 0.034));
-  const hw = w / 2 - tubeR * 0.2;
-  const hh = h - tubeR * 0.4;
-  const r = Math.min(0.15, hw * 0.36);
-  const segs = QUALITY.phone ? 64 : 128;
-  const radial = QUALITY.phone ? 8 : 16;
-  const rail = new THREE.Mesh(new THREE.TubeGeometry(new RoundedRectRailCurve(hw, hh, r), segs, tubeR, radial, true), bronze);
-  rail.castShadow = true;
-  rail.receiveShadow = true;
-  group.add(rail);
-  const inset = tubeR * 0.95;
-  const ghw = Math.max(0.16, hw - inset);
-  const ghh = Math.max(0.3, hh - inset * 0.35);
-  const gr = Math.max(0.06, r - inset * 0.55);
-  const lip = new THREE.Mesh(
-    new THREE.TubeGeometry(new RoundedRectRailCurve(ghw + tubeR * 0.12, ghh, Math.max(0.05, gr)), segs, tubeR * 0.18, 8, true),
-    lipMat
-  );
-  lip.position.z = 0.01;
-  group.add(lip);
-  const glassSize = QUALITY.phone ? 320 : QUALITY.high ? 1024 : 704;
-  const glassGeo = makeRoundedRectGeometry(ghw, ghh, gr, QUALITY.phone ? 8 : 14);
-  const glass = QUALITY.phone
-    ? makeLiveGlass(glassGeo, 0xd6dce2)
-    : new Reflector(glassGeo, {
-        clipBias: 0.002,
-        textureWidth: glassSize,
-        textureHeight: Math.round(glassSize * 1.7),
-        color: 0xd8dee4,
-        multisample: 0,
-      });
-  glass.position.set(0, 0, 0.014);
-  group.add(glass);
-  const back = new THREE.Mesh(
-    new THREE.ExtrudeGeometry(roundedMirrorShape(hw + tubeR * 0.12, hh, r, QUALITY.phone ? 8 : 12), {
-      depth: 0.034,
-      bevelEnabled: false,
-      curveSegments: QUALITY.phone ? 10 : 18,
-    }),
-    new THREE.MeshStandardMaterial({ color: "#1a1612", roughness: 0.86, metalness: 0.06 })
-  );
-  back.position.z = -0.05;
-  back.castShadow = true;
-  group.add(back);
-  const shade = new THREE.Mesh(
-    makeRoundedRectGeometry(hw + tubeR * 1.15, hh, r + tubeR * 0.2, 10),
-    new THREE.MeshBasicMaterial({ color: "#000000", transparent: true, opacity: 0.14, depthWrite: false })
-  );
-  shade.position.z = -0.062;
-  group.add(shade);
+function addMirrorVanityLights(group, w, h, z = 0.03) {
+  const gold = polishedGold("#c6a56a");
+  const glow = new THREE.MeshStandardMaterial({
+    color: "#ffe7b0",
+    emissive: "#ffc45c",
+    emissiveIntensity: 1.55,
+    roughness: 0.22,
+    metalness: 0.3,
+  });
+  const patti = new THREE.MeshStandardMaterial({
+    color: "#ffd27a",
+    emissive: "#e8a84a",
+    emissiveIntensity: 1.35,
+    roughness: 0.18,
+    metalness: 0.38,
+  });
+  const inset = 0.03;
+  const stripT = 0.011;
+  group.add(box(w - 0.028, stripT, 0.01, patti, 0, inset, z));
+  group.add(box(w - 0.028, stripT, 0.01, patti, 0, h - inset, z));
+  group.add(box(stripT, h - 0.028, 0.01, patti, -w / 2 + inset, h / 2, z));
+  group.add(box(stripT, h - 0.028, 0.01, patti, w / 2 - inset, h / 2, z));
+
+  const r = Math.min(0.024, w * 0.032);
+  const alongW = Math.max(3, Math.round(w / 0.22));
+  const alongH = Math.max(3, Math.round(h / 0.26));
+  const hw = w / 2 - inset;
+  const pts = [];
+  for (let i = 0; i <= alongW; i++) {
+    const x = -hw + (2 * hw * i) / alongW;
+    pts.push(x, inset, x, h - inset);
+  }
+  for (let i = 1; i < alongH; i++) {
+    const y = inset + ((h - inset * 2) * i) / alongH;
+    pts.push(-hw, y, hw, y);
+  }
+  const n = pts.length / 2;
+  const cups = new THREE.InstancedMesh(BALL, gold, n);
+  const bulbs = new THREE.InstancedMesh(BALL, glow, n);
+  cups.castShadow = bulbs.castShadow = false;
+  for (let i = 0; i < n; i++) {
+    const x = pts[i * 2];
+    const y = pts[i * 2 + 1];
+    INST.rotation.set(0, 0, 0);
+    INST.position.set(x, y, z + 0.004);
+    INST.scale.set(r * 0.52, r * 0.52, r * 0.52);
+    INST.updateMatrix();
+    cups.setMatrixAt(i, INST.matrix);
+    INST.position.set(x, y, z + 0.016);
+    INST.scale.set(r, r, r);
+    INST.updateMatrix();
+    bulbs.setMatrixAt(i, INST.matrix);
+  }
+  cups.instanceMatrix.needsUpdate = true;
+  bulbs.instanceMatrix.needsUpdate = true;
+  group.add(cups, bulbs);
 }
 
-function addStandingMirror(group, w, h, goldColor) {
+function addArchedFloorMirror(group, w, h, vanity = false) {
+  const frameT = 0.016;
+  const oakD = 0.07;
+  const glassW = Math.max(0.2, w - frameT * 2);
+  const glassH = Math.max(0.3, h - frameT * 2);
+  const oak = mappedColorMat("#e8d2ae", "floor-oakplank", {
+    roughness: 0.42,
+    metalness: 0.04,
+    env: 0.55,
+    repeat: 1.4,
+    repeatY: 2.2,
+  });
+  const black = new THREE.MeshStandardMaterial({
+    color: "#111111",
+    roughness: 0.38,
+    metalness: 0.22,
+    envMapIntensity: 0.35,
+  });
+  group.add(box(w, h, oakD, oak, 0, h / 2, -oakD / 2 - 0.004));
+  group.add(box(w, frameT, 0.026, black, 0, frameT / 2, 0.01));
+  group.add(box(w, frameT, 0.026, black, 0, h - frameT / 2, 0.01));
+  group.add(box(frameT, h - frameT * 2, 0.026, black, -w / 2 + frameT / 2, h / 2, 0.01));
+  group.add(box(frameT, h - frameT * 2, 0.026, black, w / 2 - frameT / 2, h / 2, 0.01));
+  const glass = makeLiveReflector(new THREE.PlaneGeometry(glassW, glassH));
+  glass.position.set(0, h / 2, 0.018);
+  group.add(glass);
+  if (vanity) addMirrorVanityLights(group, w, h, 0.032);
+}
+
+function addFittingMirrorPane(w, h, live = false) {
+  const geo = new THREE.PlaneGeometry(Math.max(0.18, w), Math.max(0.28, h));
+  return live ? makeLiveReflector(geo) : makeChromeGlass(geo);
+}
+
+function addFittingRoom(group, item, w, h, d, main, brass) {
+  const open = !!item.open;
+  const gold = polishedGold(item.accent || "#c6a56a");
+  const black = new THREE.MeshStandardMaterial({
+    color: "#111111",
+    roughness: 0.36,
+    metalness: 0.24,
+    envMapIntensity: 0.4,
+  });
+  const dark = isDarkBody(item.color);
+  const lining = mappedColorMat(dark ? "#2a221c" : "#f7f1e8", "silk", {
+    roughness: 0.36,
+    metalness: 0.03,
+    env: 0.72,
+    repeat: 1.5,
+    repeatY: 2.1,
+  });
+  const oak = mappedColorMat("#e8d2ae", "floor-oakplank", {
+    roughness: 0.42,
+    metalness: 0.04,
+    env: 0.55,
+    repeat: 1.4,
+    repeatY: 2.2,
+  });
+  const velvet = leatherMat(dark ? "#1a1418" : "#2a2230");
+  const led = new THREE.MeshStandardMaterial({
+    color: "#fff6e8",
+    emissive: "#ffd89a",
+    emissiveIntensity: 1.2,
+  });
+  const wallT = 0.048;
+  const pier = 0.16;
+  const doorH = h - 0.14;
+  const openingW = Math.max(0.9, w - pier * 2);
+  const leafW = openingW / 2;
+  const frontZ = d / 2;
+  const innerW = w - wallT * 2 - 0.01;
+  const innerD = d - wallT - 0.04;
+
+  group.add(box(w, h, wallT, main, 0, h / 2, -d / 2 + wallT / 2));
+  group.add(box(wallT, h, d, main, -w / 2 + wallT / 2, h / 2, 0));
+  group.add(box(wallT, h, d, main, w / 2 - wallT / 2, h / 2, 0));
+  group.add(box(w, 0.07, d, main, 0, h - 0.035, 0));
+  group.add(box(pier, doorH, 0.07, main, -w / 2 + pier / 2, doorH / 2, frontZ - 0.02));
+  group.add(box(pier, doorH, 0.07, main, w / 2 - pier / 2, doorH / 2, frontZ - 0.02));
+  group.add(box(w, 0.12, 0.08, main, 0, h - 0.06, frontZ - 0.01));
+
+  group.add(box(innerW, h - 0.12, 0.012, lining, 0, h / 2, -d / 2 + wallT + 0.012));
+  group.add(box(0.012, h - 0.12, innerD, lining, -w / 2 + wallT + 0.012, h / 2, -0.01));
+  group.add(box(0.012, h - 0.12, innerD, lining, w / 2 - wallT - 0.012, h / 2, -0.01));
+
+  group.add(box(innerW, 0.07, 0.018, gold, 0, 0.035, -d / 2 + wallT + 0.02));
+  group.add(box(0.018, 0.07, innerD - 0.06, gold, -w / 2 + wallT + 0.022, 0.035, 0));
+  group.add(box(0.018, 0.07, innerD - 0.06, gold, w / 2 - wallT - 0.022, 0.035, 0));
+  group.add(box(innerW, 0.028, 0.016, gold, 0, h - 0.09, -d / 2 + wallT + 0.02));
+
+  group.add(box(innerW - 0.1, 0.005, d - 0.2, gold, 0, 0.004, -0.02));
+  group.add(box(innerW - 0.14, 0.012, d - 0.24, velvet, 0, 0.01, -0.02));
+  group.add(box(w - 0.04, 0.026, 0.09, gold, 0, 0.013, frontZ - 0.01));
+
+  for (const x of [-w / 2 + 0.032, w / 2 - 0.032]) {
+    group.add(box(0.05, h, 0.05, gold, x, h / 2, frontZ - 0.018));
+    group.add(box(0.05, h, 0.05, gold, x, h / 2, -d / 2 + 0.03));
+  }
+
+  group.add(box(w - 0.06, 0.02, 0.06, gold, 0, h - 0.118, frontZ + 0.012));
+  group.add(box(openingW + 0.06, 0.01, 0.046, gold, 0, doorH + 0.018, frontZ + 0.02));
+  group.add(box(openingW, 0.008, 0.03, led, 0, doorH + 0.006, frontZ + 0.018));
+  group.add(box(0.028, doorH, 0.055, gold, -openingW / 2 - 0.012, doorH / 2, frontZ - 0.004));
+  group.add(box(0.028, doorH, 0.055, gold, openingW / 2 + 0.012, doorH / 2, frontZ - 0.004));
+
+  const vacant = new THREE.MeshStandardMaterial({
+    color: open ? "#8cffc0" : "#ffb4a0",
+    emissive: open ? "#2ad47a" : "#ff6a4a",
+    emissiveIntensity: 0.9,
+  });
+  group.add(box(0.09, 0.016, 0.016, vacant, 0, h - 0.155, frontZ + 0.042));
+  addBrandPlate(group, 0, h - 0.22, frontZ + 0.036, 0, "TRY ROOM");
+  addTryRoomSign(group, w, h, d);
+
+  const mw = Math.max(0.62, w - 0.4);
+  const mh = Math.max(1.46, h - 0.64);
+  const mz = -d / 2 + wallT + 0.042;
+  const my = mh / 2 + 0.18;
+  group.add(box(mw + 0.06, mh + 0.06, 0.03, oak, 0, my, mz - 0.018));
+  group.add(box(mw + 0.03, 0.014, 0.02, black, 0, my + mh / 2 + 0.008, mz));
+  group.add(box(mw + 0.03, 0.014, 0.02, black, 0, my - mh / 2 - 0.008, mz));
+  group.add(box(0.014, mh, 0.02, black, -mw / 2 - 0.008, my, mz));
+  group.add(box(0.014, mh, 0.02, black, mw / 2 + 0.008, my, mz));
+  const backGlass = addFittingMirrorPane(mw, mh, true);
+  backGlass.position.set(0, my, mz + 0.014);
+  group.add(backGlass);
+  group.add(box(mw + 0.08, 0.01, 0.012, led, 0, my + mh / 2 + 0.032, mz + 0.008));
+  group.add(box(mw + 0.08, 0.01, 0.012, led, 0, my - mh / 2 - 0.032, mz + 0.008));
+
+  const bw = Math.min(0.82, w - 0.52);
+  group.add(box(bw + 0.04, 0.03, 0.38, gold, 0, 0.33, -d / 2 + 0.44));
+  group.add(box(bw, 0.09, 0.34, velvet, 0, 0.39, -d / 2 + 0.44));
+  group.add(box(0.038, 0.32, 0.038, gold, -bw / 2 + 0.05, 0.16, -d / 2 + 0.32));
+  group.add(box(0.038, 0.32, 0.038, gold, bw / 2 - 0.05, 0.16, -d / 2 + 0.32));
+  group.add(box(0.038, 0.32, 0.038, gold, -bw / 2 + 0.05, 0.16, -d / 2 + 0.54));
+  group.add(box(0.038, 0.32, 0.038, gold, bw / 2 - 0.05, 0.16, -d / 2 + 0.54));
+
+  for (const y of [1.26, 1.52]) {
+    group.add(box(0.018, 0.018, 0.09, gold, -w / 2 + wallT + 0.055, y, 0.16));
+    group.add(box(0.01, 0.042, 0.01, gold, -w / 2 + wallT + 0.078, y + 0.02, 0.2));
+  }
+
+  group.add(box(innerW - 0.18, 0.014, innerD - 0.22, lining, 0, h - 0.078, 0));
+  group.add(box(innerW - 0.32, 0.008, 0.016, led, 0, h - 0.086, (innerD - 0.4) / 2));
+  group.add(box(innerW - 0.32, 0.008, 0.016, led, 0, h - 0.086, -(innerD - 0.4) / 2));
+  group.add(box(0.12, 0.018, 0.12, gold, 0, h - 0.09, 0));
+  group.add(box(0.055, 0.01, 0.055, led, 0, h - 0.102, 0));
+  if (!furniturePreviewMode && lampBudget < QUALITY.maxLights) {
+    lampBudget += 1;
+    const lamp = new THREE.PointLight("#ffe6c4", open ? 11 : 7, 3.4, 1.75);
+    lamp.position.set(0, h - 0.24, 0.02);
+    lamp.castShadow = false;
+    group.add(lamp);
+  }
+
+  const slide = open ? leafW * 0.72 : 0;
+  const frameT = 0.016;
+  const glassH = doorH - 0.05;
+  const glassW = Math.max(0.2, leafW - frameT * 2.4);
+  for (let i = 0; i < 2; i++) {
+    const leaf = new THREE.Group();
+    leaf.add(box(leafW, doorH, 0.03, oak, leafW / 2, doorH / 2, -0.016));
+    leaf.add(box(leafW, frameT, 0.022, black, leafW / 2, frameT / 2, 0.008));
+    leaf.add(box(leafW, frameT, 0.022, black, leafW / 2, doorH - frameT / 2, 0.008));
+    leaf.add(box(frameT, doorH - frameT * 2, 0.022, black, frameT / 2, doorH / 2, 0.008));
+    leaf.add(box(frameT, doorH - frameT * 2, 0.022, black, leafW - frameT / 2, doorH / 2, 0.008));
+    const pane = addFittingMirrorPane(glassW, glassH);
+    pane.position.set(leafW / 2, doorH / 2, 0.016);
+    leaf.add(pane);
+    const hx = i === 0 ? leafW - 0.055 : 0.055;
+    leaf.add(box(0.012, 0.2, 0.016, gold, hx, doorH * 0.5, 0.028));
+    leaf.position.set(-openingW / 2 + i * leafW + (i === 0 ? -slide : slide), 0.02, frontZ + 0.014 + (i === 0 ? 0 : 0.016));
+    group.add(leaf);
+  }
+}
+
+function addStandingMirror(group, w, h, goldColor, vanity = false) {
   const gold = polishedGold(goldColor || "#c6a56a");
   const t = Math.min(0.03, w * 0.045);
   const glassW = w - t * 2.2;
@@ -619,6 +880,7 @@ function addStandingMirror(group, w, h, goldColor) {
   glass.position.set(0, h / 2, 0.018);
   group.add(glass);
   group.add(box(w - t, h - t, 0.02, new THREE.MeshStandardMaterial({ color: "#161412", roughness: 0.8, metalness: 0.1 }), 0, h / 2, -0.018));
+  if (vanity) addMirrorVanityLights(group, w, h, 0.034);
 }
 
 function isDarkBody(color) {
@@ -741,6 +1003,54 @@ function brandPlateTex(word = "ATELIER") {
   return tex;
 }
 
+function tryRoomSignTex() {
+  const key = "TRY ROOM";
+  if (BRAND_TEX.has(key)) return BRAND_TEX.get(key);
+  const c = document.createElement("canvas");
+  c.width = 768;
+  c.height = 160;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#161310";
+  ctx.fillRect(0, 0, 768, 160);
+  ctx.strokeStyle = "#c6a56a";
+  ctx.lineWidth = 8;
+  ctx.strokeRect(12, 12, 744, 136);
+  ctx.fillStyle = "#e8d2ae";
+  ctx.font = "600 72px Cormorant Garamond, Georgia, serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("TRY ROOM", 384, 80);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  BRAND_TEX.set(key, tex);
+  return tex;
+}
+
+function addTryRoomSign(group, w, h, d) {
+  const gold = metalMat("#c6a56a");
+  const plateW = Math.min(1.22, Math.max(0.72, w * 0.68));
+  const plateH = 0.14;
+  const y = h + 0.1;
+  const z = d * 0.02;
+  group.add(box(0.018, 0.08, 0.018, gold, -plateW * 0.38, h + 0.04, z, false));
+  group.add(box(0.018, 0.08, 0.018, gold, plateW * 0.38, h + 0.04, z, false));
+  group.add(box(plateW + 0.04, plateH + 0.024, 0.018, gold, 0, y, z, false));
+  const face = new THREE.Mesh(
+    PLANE,
+    new THREE.MeshStandardMaterial({
+      map: tryRoomSignTex(),
+      roughness: 0.28,
+      metalness: 0.16,
+      emissive: "#c6a56a",
+      emissiveMap: tryRoomSignTex(),
+      emissiveIntensity: 0.22,
+    })
+  );
+  face.scale.set(plateW, plateH, 1);
+  face.position.set(0, y, z + 0.012);
+  group.add(face);
+}
+
 function addBrandPlate(group, x, y, z, ry = 0, word = "ATELIER") {
   const g = new THREE.Group();
   g.add(box(0.3, 0.07, 0.012, metalMat("#c6a56a"), 0, 0, 0, false));
@@ -811,6 +1121,69 @@ function addAurumPlate(group, x, y, z, word, w = 0.28, h = 0.058) {
 
 function watchGlassMat() {
   return glassMat("#ffffff", { opacity: 0.05, env: 0.55, roughness: 0.04, reflectivity: 0.12 });
+}
+
+function watchMirrorWallMat() {
+  const spec = {
+    color: "#ffffff",
+    metalness: 0.06,
+    roughness: 0.02,
+    transparent: true,
+    opacity: 0.09,
+    depthWrite: false,
+    envMapIntensity: 2.6,
+    side: THREE.DoubleSide,
+  };
+  const mat = QUALITY.physical
+    ? new THREE.MeshPhysicalMaterial({
+        ...spec,
+        clearcoat: 1,
+        clearcoatRoughness: 0.02,
+        reflectivity: 0.95,
+        ior: 1.52,
+        transmission: 0.96,
+        thickness: 0.012,
+      })
+    : new THREE.MeshStandardMaterial(spec);
+  mat.userData.noFreezeDepth = true;
+  return mat;
+}
+
+function addWatchMirrorCube(group, y, size, gold) {
+  const s = size;
+  const h = size * 1.02;
+  const t = 0.008;
+  const mid = y + h / 2;
+  const inset = t * 0.6;
+  const pane = watchMirrorWallMat();
+  const half = s / 2;
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      group.add(box(t, h, t, gold, sx * (half - t / 2), mid, sz * (half - t / 2), false));
+    }
+  }
+  for (const yRail of [y + t / 2, y + h - t / 2]) {
+    group.add(box(s, t, t, gold, 0, yRail, half - t / 2, false));
+    group.add(box(s, t, t, gold, 0, yRail, -half + t / 2, false));
+    group.add(box(t, t, s, gold, -half + t / 2, yRail, 0, false));
+    group.add(box(t, t, s, gold, half - t / 2, yRail, 0, false));
+  }
+  const addPane = (w, hh, d, x, yy, z) => {
+    const mesh = box(w, hh, d, pane, x, yy, z, false);
+    mesh.renderOrder = 2;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    group.add(mesh);
+  };
+  addPane(s - t * 2, h - t * 2, 0.002, 0, mid, -half + inset);
+  addPane(s - t * 2, h - t * 2, 0.002, 0, mid, half - inset);
+  addPane(0.002, h - t * 2, s - t * 2, -half + inset, mid, 0);
+  addPane(0.002, h - t * 2, s - t * 2, half - inset, mid, 0);
+  addPane(s - t * 2, 0.002, s - t * 2, 0, y + h - inset, 0);
+  const lamp = new THREE.PointLight("#fff6e8", 16, 0.85, 1.6);
+  lamp.position.set(0, mid + 0.04, 0);
+  lamp.castShadow = false;
+  group.add(lamp);
 }
 
 function suedeMat(color) {
@@ -1236,12 +1609,12 @@ export const CATALOG = [
   { type: "dressNiche", label: "Clothing wall shelf", hint: "Hanger shirts on chrome rail" },
   { type: "marbleIsland", label: "Marble island", hint: "Low floating display" },
   { type: "marblePlinth", label: "Marble pedestal", hint: "Featured piece" },
-  { type: "goldArch", label: "Arched mirror", hint: "Rounded rectangle mirror" },
+  { type: "goldArch", label: "Floor mirror", hint: "Real glass reflection" },
   { type: "rack", label: "Dress rack", hint: "Hanging clothes" },
   { type: "mannequin", label: "Display model", hint: "Boutique fashion model" },
   { type: "mannequinCase", label: "Glass mannequin case", hint: "Front window vitrine" },
   { type: "glowRunway", label: "LED runway arch", hint: "Oval neon + platform" },
-  { type: "fittingRoom", label: "Fitting room", hint: "Try-on booth" },
+  { type: "fittingRoom", label: "Fitting room", hint: "Mirror-door try-on booth" },
   { type: "shoeWall", label: "Shoe wall", hint: "Footwear display" },
   { type: "shoeIsland", label: "Shoe table", hint: "Pairs on top" },
   { type: "mirror", label: "Floor mirror", hint: "Fitting" },
@@ -1298,7 +1671,7 @@ export const DEFAULTS = {
   dressNiche: { width: 3.15, depth: 0.46, height: 2.24, color: "#f4eee6", accent: "#b08968", stock: "dresses" },
   marbleIsland: { width: 3.4, depth: 0.92, height: 0.4, color: "#f6f1e8", accent: "#c6a56a", stock: "dresses" },
   marblePlinth: { width: 0.42, depth: 0.42, height: 0.78, color: "#f6f1e8", accent: "#c6a56a", stock: "shoes" },
-  goldArch: { width: 1.04, depth: 0.1, height: 2.28, color: "#5a4a3c", accent: "#5a4a3c", stock: "none" },
+  goldArch: { width: 1.36, depth: 0.1, height: 2.62, color: "#111111", accent: "#e8d2ae", stock: "none" },
   cube: { width: 0.7, depth: 0.7, height: 0.7, color: "#f4eee6", accent: "#c6a56a", stock: "none" },
   plant: { width: 0.45, depth: 0.45, height: 0.9, color: "#6f6964", accent: "#3f8f5a", stock: "none" },
   light: { width: 0.35, depth: 0.35, height: 1.7, color: "#f4eee6", accent: "#c6a56a", stock: "none" },
@@ -1420,6 +1793,7 @@ function placeDeskProduct(group, item, spec, y) {
   const slotId = spec.slotId;
   let node;
   if (category === "laptops") {
+    if (hideShopLaptops || item.type === "haloDesk" || item.type === "desk" || item.type === "phonePedestal") return;
     node = makeDeskLaptop(index, x, y, z, { slotId, furnId: item.id, id: `prod-${item.id}-${slotId}` });
     node.scale.setScalar(scale);
   } else if (category === "tablets") {
@@ -1453,6 +1827,7 @@ function placeDisplay(group, item, slotId, fallback) {
   if (isHiddenSlot(item, slotId)) return;
   const swap = item.productMap?.[slotId];
   const category = swap?.category || fallback.category;
+  if (hideShopLaptops && category === "laptops") return;
   const index = category === "watches" ? nextWatchColor() : swap?.index ?? fallback.index;
   const scale = swap?.scale ?? fallback.scale;
   const node = makeDisplayProduct(category, index, fallback.x, fallback.y, fallback.z, {
@@ -1710,9 +2085,9 @@ function fillStock(group, item) {
         category: "watches",
         index: seed,
         x: 0,
-        y: h + 0.028,
-        z: 0.01,
-        scale: item.watchScale ?? 1.85,
+        y: h + 0.11,
+        z: 0,
+        scale: Math.min(item.watchScale ?? 1.35, 1.45),
         tilt: aisleTilt * 0.55,
         stand: false,
       });
@@ -2118,11 +2493,13 @@ let watchColorSeq = 0;
 let manOutfitSeq = 0;
 export function resetLampBudget() {
   lampBudget = 0;
+  resetReflectorBudget();
   watchColorSeq = 0;
   manOutfitSeq = 0;
   mannequinWalkers.length = 0;
 }
 function nextWatchColor() {
+  if (furniturePreviewMode) return 0;
   return watchColorSeq++;
 }
 
@@ -2298,6 +2675,7 @@ export function compileMannequinModels(renderer, scene, camera) {
 }
 
 function nextManOutfit() {
+  if (furniturePreviewMode) return 0;
   return manOutfitSeq++;
 }
 
@@ -2587,7 +2965,7 @@ export function updateMannequinWalks(dt) {
   return true;
 }
 
-const WALK_GLB_URLS = ["./models/mannequin/lumberjack.glb?v=tex1", "./models/mannequin/business_man.glb"];
+const WALK_GLB_URLS = ["./models/mannequin/business_man.glb"];
 let walkGltf = null;
 let walkLoad = null;
 let walkGirlLoad = null;
@@ -2623,6 +3001,10 @@ export function loadWalkGirl() {
   if (walkGirlLoad) return walkGirlLoad;
   walkGirlLoad = loadAllWalkGirls().then((list) => list.length > 0);
   return walkGirlLoad;
+}
+
+export function walkAvatarReady() {
+  return Boolean(walkGltf?.scene);
 }
 
 export function loadWalkAvatar() {
@@ -2686,10 +3068,12 @@ function makeWalkActions(mixer, clips, opts = {}) {
     if (idleClip && idleClip !== walkClip) idleClip = stripArmTracks(idleClip);
   }
   if (!idleClip && walkClip) idleClip = holdPoseClip(walkClip);
+  const sitClip = pickWalkClip(clips, /sitting_idle/i);
   const actions = {};
   try {
     if (idleClip && idleClip !== walkClip) actions.idle = mixer.clipAction(idleClip);
     if (walkClip) actions.walk = mixer.clipAction(walkClip);
+    if (sitClip) actions.sit = mixer.clipAction(sitClip);
   } catch (err) {
     console.warn("walk clip bind failed", err);
   }
@@ -2813,6 +3197,7 @@ export function createWalkAvatar() {
   return actor;
 }
 function takeLampSlot() {
+  if (furniturePreviewMode) return false;
   if (lampBudget >= QUALITY.maxLights) return false;
   lampBudget += 1;
   return true;
@@ -4450,7 +4835,7 @@ export function createFurniture(item) {
   } else if (type === "goldArch") {
     const lift = item.lift ?? 0.14;
     const mount = new THREE.Group();
-    addArchedFloorMirror(mount, w, h);
+    addArchedFloorMirror(mount, w, h, !!item.vanityLed);
     mount.position.y = lift;
     group.add(mount);
   } else if (type === "rack") {
@@ -4848,25 +5233,7 @@ export function createFurniture(item) {
     wash.rotation.x = -Math.PI / 2;
     wash.position.y = h + 0.022;
     group.add(wash);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(domeR, QUALITY.low ? 18 : 36, 18, 0, Math.PI * 2, 0, Math.PI * 0.58), watchGlassMat());
-    dome.position.y = h + 0.018;
-    dome.castShadow = false;
-    group.add(dome);
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2;
-      const pts = [];
-      for (let t = 0; t <= 10; t++) {
-        const ang = (t / 10) * Math.PI * 0.56;
-        pts.push(new THREE.Vector3(Math.cos(a) * Math.cos(ang) * domeR, Math.sin(ang) * domeR, Math.sin(a) * Math.cos(ang) * domeR));
-      }
-      const rib = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 12, 0.0036, 6, false), gold);
-      rib.position.y = h + 0.018;
-      rib.castShadow = false;
-      group.add(rib);
-    }
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.014, 10, 8), gold);
-    cap.position.y = h + 0.018 + domeR * 0.93;
-    group.add(cap);
+    addWatchMirrorCube(group, h + 0.02, Math.max(0.44, domeR * 1.55, (item.watchScale || 1.28) * 0.34), gold);
     addLampLight(group, { ...item, lightOn: item.lightOn !== false, lightPower: item.lightPower ?? 26, lightColor: item.lightColor || "#ffe4ae" }, h + 0.16, "point");
   } else if (type === "mannequinCase") {
     const frame = new THREE.MeshStandardMaterial({ color: "#101010", roughness: 0.22, metalness: 0.45, envMapIntensity: 0.95 });
@@ -4985,36 +5352,7 @@ export function createFurniture(item) {
     }
     }
   } else if (type === "fittingRoom") {
-    const open = !!item.open;
-    group.add(box(w, h, 0.04, main, 0, h / 2, -d / 2 + 0.02));
-    group.add(box(0.04, h, d, main, -w / 2 + 0.02, h / 2, 0));
-    group.add(box(0.04, h, d, main, w / 2 - 0.02, h / 2, 0));
-    group.add(box(w, 0.05, d, main, 0, h, 0));
-    group.add(box(0.05, h, 0.05, brass, -w / 2 + 0.04, h / 2, d / 2 - 0.02));
-    group.add(box(0.05, h, 0.05, brass, w / 2 - 0.04, h / 2, d / 2 - 0.02));
-    const gold = polishedGold(item.accent || "#c6a56a");
-    const mw = Math.max(0.72, w - 0.42);
-    const mh = Math.max(1.55, h - 0.55);
-    const mz = -d / 2 + 0.055;
-    const my = mh / 2 + 0.12;
-    group.add(box(mw + 0.08, mh + 0.08, 0.03, gold, 0, my, mz - 0.012));
-    group.add(box(mw + 0.04, 0.018, 0.02, gold, 0, my + mh / 2 + 0.02, mz + 0.006));
-    group.add(box(mw + 0.04, 0.018, 0.02, gold, 0, my - mh / 2 - 0.02, mz + 0.006));
-    const glass = makeLiveGlass(new THREE.PlaneGeometry(mw, mh));
-    glass.position.set(0, my, mz + 0.012);
-    group.add(glass);
-    const curtain = fabricMat(item.accent);
-    const rod = shadow(new THREE.Mesh(TUBE, brass));
-    rod.scale.set(0.012, w - 0.08, 0.012);
-    rod.rotation.z = Math.PI / 2;
-    rod.position.set(0, h - 0.08, d / 2 - 0.02);
-    group.add(rod);
-    const slide = open ? w * 0.34 : 0;
-    const leftW = open ? w * 0.22 : w * 0.42;
-    const rightW = open ? w * 0.2 : w * 0.28;
-    group.add(box(leftW, h * 0.88, 0.03, curtain, -w * 0.18 - slide, h * 0.48, d / 2 - 0.03));
-    group.add(box(rightW, h * 0.88, 0.03, curtain, w * 0.22 + slide, h * 0.48, d / 2 - 0.03));
-    addBrandPlate(group, 0, h - 0.16, -d / 2 + 0.03, Math.PI);
+    addFittingRoom(group, item, w, h, d, main, brass);
   } else if (type === "shoeWall") {
     group.add(box(w, h, 0.05, main, 0, h / 2, -d / 2 + 0.03));
     group.add(box(w, 0.05, d, brass, 0, 0.03, 0));
@@ -5029,7 +5367,7 @@ export function createFurniture(item) {
     group.add(box(w - 0.02, 0.024, d - 0.02, top, 0, h + 0.02, 0));
     addBrandPlate(group, 0, 0.28, d / 2 + 0.01);
   } else if (type === "mirror") {
-    addStandingMirror(group, w, h, item.accent || "#c6a56a");
+    addStandingMirror(group, w, h, item.accent || "#c6a56a", !!item.vanityLed);
   } else if (type === "sofa") {
     if (!addSofaModel(group, item)) {
       const hide = leatherMat(item.color || "#3a2e28");
